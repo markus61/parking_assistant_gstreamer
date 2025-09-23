@@ -192,7 +192,7 @@ def build_pipeline_from_ini(ini_path: Path, profile: str) -> str:
     extra = cp[ssec].get("extra", fallback="").strip()
     sink_str = f'udpsink host={addr} port={port}'
     if is_multicast_ip(addr):
-        sink_str += " auto-multicast=true multicast-iface={iface} mttl=16"
+        sink_str += f" auto-multicast=true multicast-iface={iface} mttl=16"
     if extra:
         sink_str += " " + render_block(extra, ctx)
     fragments.append(sink_str)
