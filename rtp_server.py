@@ -55,8 +55,8 @@ def build_pipeline(args: Any) -> Tuple[Gst.Pipeline, str]:
     GOP=1*FRAMES
     HOST="192.168.0.2"
     PORT=5000
-    LEFT="/dev/video22"
-    RIGHT="/dev/video31"
+    LEFT="/dev/video31"
+    RIGHT="/dev/video22"
 
     pipeline_str = f"""
   compositor name=stitch background=black start-time-selection=zero latency=0 
