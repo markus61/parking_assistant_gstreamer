@@ -177,10 +177,15 @@ if __name__ == "__main__":
         0.0, 0.0, 1.0, 0.0,
         0.0, 0.0, 0.0, 1.0
     ]
-
+    test_matrix = [
+      1.0, 0.0, 0.0, 0.0,
+      0.0, 1.0, 0.0, 0.0,
+      0.0, 0.0, 1.0, 0.0,
+      0.0, 0.0, 0.0, 1.0
+    ]
     # Set matrix for both perspective elements
-    set_perspective_matrix(pipeline, "perspective_left", identity_matrix)
-    set_perspective_matrix(pipeline, "perspective_right", identity_matrix)
+    set_perspective_matrix(pipeline, "perspective_left", test_matrix)
+    set_perspective_matrix(pipeline, "perspective_right", test_matrix)
 
     try:
         loop.run()
