@@ -42,6 +42,7 @@ def build_pipeline(args: Any) -> str:
   compositor name=stitch background=black start-time-selection=zero latency=0
     sink_0::xpos=0    sink_0::ypos=0 sink_0::width=540 sink_0::height=960
     sink_1::xpos=540 sink_1::ypos=0 sink_1::width=540 sink_1::height=960
+  ! videoconvert
   ! videorate drop-only=true max-rate={FRAMES}
   ! video/x-raw,format=NV12,width=1080,height=960,framerate={FRAMES}/1
   ! queue max-size-buffers=2 max-size-time=33333333 leaky=2
@@ -51,19 +52,17 @@ def build_pipeline(args: Any) -> str:
   ! udpsink host={HOST} port={PORT} sync=false async=false qos=false
 
   v4l2src device={LEFT} io-mode=4
-  ! video/x-raw,format=NV12,width=1920,height=1080,framerate={FRAMES}/1
   ! videoconvert
+  ! video/x-raw,format=RGBA,width=1920,height=1080,framerate={FRAMES}/1
   ! perspective name=perspective_left
-  ! videoconvert
   ! videoflip method=counterclockwise
   ! queue max-size-buffers=2 max-size-time=33333333 leaky=2
   ! stitch.sink_0
 
   v4l2src device={RIGHT} io-mode=4
-  ! video/x-raw,format=NV12,width=1920,height=1080,framerate={FRAMES}/1
   ! videoconvert
+  ! video/x-raw,format=RGBA,width=1920,height=1080,framerate={FRAMES}/1
   ! perspective name=perspective_right
-  ! videoconvert
   ! videoflip method=clockwise
   ! queue max-size-buffers=2 max-size-time=33333333 leaky=2
   ! stitch.sink_1
