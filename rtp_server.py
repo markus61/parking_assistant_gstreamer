@@ -81,7 +81,7 @@ def build_pipeline(args: Any) -> Tuple[Gst.Pipeline, str]:
   ! stitch.sink_0 
 
   v4l2src device={RIGHT} io-mode=4 
-  ! video/x-raw,format=NV12,width=1920,height=1080,framerate={FRAMES}/1 
+  ! video/x-raw,format=AYUV,width=1920,height=1080,framerate={FRAMES}/1 
   ! videoflip method=clockwise 
   ! queue max-size-buffers=2 max-size-time=33333333 leaky=2 
   ! stitch.sink_1"""
