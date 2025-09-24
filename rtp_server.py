@@ -51,7 +51,7 @@ def build_pipeline(args: Any) -> Gst.Pipeline:
 
     # Clean up double spaces and newlines for readability
     FRAMES=30
-    GOP=1*FRAMES
+    GOP=15
     HOST="239.255.0.10"  # Multicast address
     PORT=5000
     LEFT="/dev/video31"
@@ -67,9 +67,9 @@ def build_pipeline(args: Any) -> Gst.Pipeline:
   ! queue max-size-buffers=2 max-size-time=33333333 leaky=2
   ! mpph265enc rc-mode=cbr bps=6000000 bps-min=4000000 bps-max=8000000 gop={GOP}
   ! h265parse config-interval=-1
-  ! rtph265pay pt=96 config-interval=1 mtu=1460
+  ! rtph265pay pt=96 config-interval=1 mtu=1460 aggregate-mode=zero-latency
   ! udpsink host={HOST} port={PORT} multicast-iface=eth0 auto-multicast=true sync=false async=false qos=false
-  
+
   v4l2src device={LEFT} io-mode=4
   ! videoconvert
   ! video/x-raw,format=RGB,width=3840,height=2160,framerate={FRAMES}/1
