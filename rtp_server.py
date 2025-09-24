@@ -73,7 +73,7 @@ def build_pipeline(args: Any) -> Gst.Pipeline:
   v4l2src device={LEFT} io-mode=4
   ! videoconvert
   ! video/x-raw,format=RGB,width=3840,height=2160,framerate={FRAMES}/1
-  ! perspective name=perspective_left
+  ! identity name=perspective_left
   ! videoscale method=1
   ! video/x-raw,format=RGB,width=1920,height=1080,framerate={FRAMES}/1
   ! videoflip method=counterclockwise
@@ -84,7 +84,7 @@ def build_pipeline(args: Any) -> Gst.Pipeline:
   v4l2src device={RIGHT} io-mode=4
   ! videoconvert
   ! video/x-raw,format=RGB,width=3840,height=2160,framerate={FRAMES}/1
-  ! perspective name=perspective_right
+  ! identity name=perspective_right
   ! videoscale method=1
   ! video/x-raw,format=RGB,width=1920,height=1080,framerate={FRAMES}/1
   ! videoflip method=clockwise
