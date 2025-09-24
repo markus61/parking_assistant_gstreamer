@@ -70,9 +70,8 @@ def build_pipeline(args: Any) -> Gst.Pipeline:
   ! rtph264pay pt=96 config-interval=1 mtu=1460
   ! udpsink host={HOST} port={PORT} multicast-iface=eth0 auto-multicast=true sync=false async=false qos=false
 
-  v4l2src device={LEFT} io-mode=4
-  ! videoconvert
-  ! video/x-raw,format=RGB,width=3840,height=2160,framerate={FRAMES}/1
+  videotestsrc pattern=0
+  ! video/x-raw,format=RGB,width=1920,height=1080,framerate={FRAMES}/1
   ! identity name=perspective_left
   ! videoscale method=1
   ! video/x-raw,format=RGB,width=1920,height=1080,framerate={FRAMES}/1
@@ -81,9 +80,8 @@ def build_pipeline(args: Any) -> Gst.Pipeline:
   ! queue max-size-buffers=2 max-size-time=33333333 leaky=2
   ! stitch.sink_0
 
-  v4l2src device={RIGHT} io-mode=4
-  ! videoconvert
-  ! video/x-raw,format=RGB,width=3840,height=2160,framerate={FRAMES}/1
+  videotestsrc pattern=1
+  ! video/x-raw,format=RGB,width=1920,height=1080,framerate={FRAMES}/1
   ! identity name=perspective_right
   ! videoscale method=1
   ! video/x-raw,format=RGB,width=1920,height=1080,framerate={FRAMES}/1
