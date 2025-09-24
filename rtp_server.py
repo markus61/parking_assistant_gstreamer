@@ -52,12 +52,20 @@ def build_pipeline(args: Any) -> str:
 
   v4l2src device={LEFT} io-mode=4
   ! video/x-raw,format=NV12,width=1920,height=1080,framerate={FRAMES}/1
+  ! videoconvert
+  ! video/x-raw,format=RGBA
+  ! gltransformation name=transform_left
+  ! videoconvert
   ! videoflip method=counterclockwise
   ! queue max-size-buffers=2 max-size-time=33333333 leaky=2
   ! stitch.sink_0
 
   v4l2src device={RIGHT} io-mode=4
   ! video/x-raw,format=NV12,width=1920,height=1080,framerate={FRAMES}/1
+  ! videoconvert
+  ! video/x-raw,format=RGBA
+  ! gltransformation name=transform_right
+  ! videoconvert
   ! videoflip method=clockwise
   ! queue max-size-buffers=2 max-size-time=33333333 leaky=2
   ! stitch.sink_1
@@ -109,6 +117,74 @@ def set_perspective_matrix(pipeline: Gst.Pipeline, element_name: str, matrix: li
         return False
 
 
+def create_keystone_matrix(top_scale: float = 1.0, bottom_scale: float = 1.0,
+                          vertical_offset: float = 0.0, rotation_x: float = 0.0) -> list:
+    """
+    Create a keystone correction matrix for trapezoid distortion.
+
+    Args:
+        top_scale: Horizontal scaling at top of image (1.0 = no change)
+        bottom_scale: Horizontal scaling at bottom of image (1.0 = no change)
+        vertical_offset: Vertical position offset (-1 to 1)
+        rotation_x: X-axis rotation in degrees for perspective effect
+
+    Returns:
+        List of 16 float values for 4x4 transformation matrix
+    """
+    # Simple keystone correction using perspective transformation
+    # For trapezoid correction: top wider than bottom -> top_scale > bottom_scale
+
+    # Convert rotation to radians
+    import math
+    rx = math.radians(rotation_x)
+
+    # Create perspective transformation matrix
+    # This is a simplified keystone correction matrix
+    matrix = [
+        top_scale,    0.0,           0.0, 0.0,
+        0.0,          1.0,           0.0, 0.0,
+        (top_scale - bottom_scale) * 0.5, vertical_offset, 1.0, 0.0,
+        0.0,          math.sin(rx), 0.0, 1.0
+    ]
+
+    return matrix
+
+
+def set_gl_transformation(pipeline: Gst.Pipeline, element_name: str,
+                         top_scale: float = 1.0, bottom_scale: float = 1.0,
+                         vertical_offset: float = 0.0, rotation_x: float = 0.0) -> bool:
+    """
+    Set keystone correction for a gltransformation element.
+
+    Args:
+        pipeline: The GStreamer pipeline
+        element_name: Name of the gltransformation element
+        top_scale: Horizontal scaling at top (>1.0 = wider, <1.0 = narrower)
+        bottom_scale: Horizontal scaling at bottom
+        vertical_offset: Vertical position adjustment
+        rotation_x: X-axis rotation for perspective effect
+
+    Returns:
+        True if successful, False otherwise
+    """
+    element = pipeline.get_by_name(element_name)
+    if element is None:
+        print(f"Error: Could not find element '{element_name}' in pipeline")
+        return False
+
+    try:
+        # For now, use individual properties instead of full matrix
+        element.set_property("rotation-x", rotation_x)
+        element.set_property("scale-x", (top_scale + bottom_scale) / 2.0)
+        element.set_property("translation-y", vertical_offset)
+
+        print(f"Successfully set GL transformation for {element_name}")
+        return True
+    except Exception as e:
+        print(f"Error setting GL transformation for {element_name}: {e}")
+        return False
+
+
 if __name__ == "__main__":
 
     # Init GStreamer
@@ -122,6 +198,29 @@ if __name__ == "__main__":
     pipeline_str = build_pipeline(None)
     print(pipeline_str)
     pipeline = Gst.parse_launch(pipeline_str)
+
+    # Set initial keystone correction for camera calibration
+    # Cameras are angled outward from 15m height
+    # Top of image covers wider area than bottom -> keystone correction needed
+
+    # Example values for calibration - adjust based on actual camera angles
+    left_keystone = {
+        "top_scale": 1.2,      # Top wider than bottom
+        "bottom_scale": 0.8,   # Bottom narrower
+        "vertical_offset": 0.0,
+        "rotation_x": -5.0     # Slight downward angle correction
+    }
+
+    right_keystone = {
+        "top_scale": 1.2,
+        "bottom_scale": 0.8,
+        "vertical_offset": 0.0,
+        "rotation_x": -5.0
+    }
+
+    # Apply keystone correction to both cameras
+    set_gl_transformation(pipeline, "transform_left", **left_keystone)
+    set_gl_transformation(pipeline, "transform_right", **right_keystone)
 
     # Main loop & bus
     loop = GLib.MainLoop()
