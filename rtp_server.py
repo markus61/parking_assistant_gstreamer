@@ -90,7 +90,7 @@ def build_pipeline(args: Any) -> Tuple[Gst.Pipeline, str]:
   ! videoflip method=counterclockwise
   ! video/x-raw,format=RGB,memory=SystemMemory
   ! queue max-size-buffers=2 max-size-time=33333333 leaky=2 
-  ! stitch.sink_1 
+  ! stitch.sink_1 """
     return Gst.parse_launch(pipeline_str)
 
 def on_bus_message(bus, msg, loop, pipeline):
