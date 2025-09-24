@@ -58,9 +58,9 @@ def build_pipeline(args: Any) -> Gst.Pipeline:
     RIGHT="/dev/video22"
 
     pipeline_str = f"""
-  compositor name=stitch background=black start-time-selection=zero latency=0
-    sink_0::xpos=0   sink_0::ypos=0 sink_0::width=540 sink_0::height=960
-    sink_1::xpos=540 sink_1::ypos=0 sink_1::width=540 sink_1::height=960
+  compositor name=stitch background=transparent start-time-selection=zero latency=0
+    sink_0::xpos=0   sink_0::ypos=0 sink_0::width=540 sink_0::height=960 sink_0::alpha=1.0
+    sink_1::xpos=540 sink_1::ypos=0 sink_1::width=540 sink_1::height=960 sink_1::alpha=1.0
   ! videoconvert
   ! videorate drop-only=true max-rate={FRAMES}
   ! video/x-raw,format=RGB,width=1080,height=960,framerate={FRAMES}/1
@@ -71,20 +71,16 @@ def build_pipeline(args: Any) -> Gst.Pipeline:
   ! udpsink host={HOST} port={PORT} multicast-iface=eth0 auto-multicast=true sync=false async=false qos=false
 
   videotestsrc pattern=0
-  ! video/x-raw,format=RGB,width=1920,height=1080,framerate={FRAMES}/1
+  ! video/x-raw,format=RGB,width=540,height=960,framerate={FRAMES}/1
   ! identity name=perspective_left
-  ! videoscale method=1
-  ! video/x-raw,format=RGB,width=1920,height=1080,framerate={FRAMES}/1
   ! videoflip method=counterclockwise
   ! video/x-raw,format=RGB,memory=SystemMemory
   ! queue max-size-buffers=2 max-size-time=33333333 leaky=2
   ! stitch.sink_0
 
   videotestsrc pattern=1
-  ! video/x-raw,format=RGB,width=1920,height=1080,framerate={FRAMES}/1
+  ! video/x-raw,format=RGB,width=540,height=960,framerate={FRAMES}/1
   ! identity name=perspective_right
-  ! videoscale method=1
-  ! video/x-raw,format=RGB,width=1920,height=1080,framerate={FRAMES}/1
   ! videoflip method=clockwise
   ! video/x-raw,format=RGB,memory=SystemMemory
   ! queue max-size-buffers=2 max-size-time=33333333 leaky=2
