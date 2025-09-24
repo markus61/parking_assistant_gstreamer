@@ -59,7 +59,8 @@ def build_pipeline(args: Any) -> Gst.Pipeline:
 
     pipeline_str = f"""
   videotestsrc pattern=0
-  ! video/x-raw,format=NV12,width=1080,height=960,framerate={FRAMES}/1
+  ! video/x-raw,width=1080,height=960,framerate=(fraction){FRAMES}/1
+  ! videoconvert
   ! mpph264enc rc-mode=cbr bps=6000000 bps-min=4000000 bps-max=8000000 gop={GOP}
   ! h264parse config-interval=-1
   ! rtph264pay pt=96 config-interval=1 mtu=1460
