@@ -70,7 +70,7 @@ def build_pipeline(args: Any) -> Tuple[Gst.Pipeline, str]:
   ! udpsink host={HOST} port={PORT} sync=false async=false qos=false 
 
   v4l2src device={LEFT} io-mode=4
-  ! video/x-raw,format=I420,width=3840,height=2160,framerate={FRAMES}/1
+  ! video/x-raw,format=RGBA,memory:SystemMemory,width=3840,height=2160,framerate={FRAMES}/1
   ! perspective
   ! videoscale method=1 
   ! video/x-raw,format=I420,width=1920,height=1080,framerate={FRAMES}/1
