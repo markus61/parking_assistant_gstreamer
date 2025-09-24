@@ -68,8 +68,8 @@ def build_pipeline(args: Any) -> Gst.Pipeline:
   ! mpph265enc rc-mode=cbr bps=6000000 bps-min=4000000 bps-max=8000000 gop={GOP}
   ! h265parse config-interval=-1
   ! rtph265pay pt=96 config-interval=1 mtu=1460
-  ! udpsink host={HOST} port={PORT} sync=false async=false qos=false
-
+  ! udpsink host={HOST} port={PORT} multicast-iface=eth0 auto-multicast=true sync=false async=false qos=false
+  
   v4l2src device={LEFT} io-mode=4
   ! videoconvert
   ! video/x-raw,format=RGB,width=3840,height=2160,framerate={FRAMES}/1
