@@ -16,7 +16,6 @@
 #   vlc camera.sdp
 #   # or: vlc "rtp://239.255.0.10:5004"
 
-from library.configure import configure
 import sys
 import signal
 from typing import Tuple, Any
@@ -60,7 +59,7 @@ def build_pipeline(args: Any) -> Tuple[Gst.Pipeline, str]:
 
     pipeline_str = f"""
   compositor name=stitch background=black start-time-selection=zero latency=0 
-    sink_0::xpos=0    sink_0::ypos=0 sink_0::width=540 sink_0::height=960 
+    sink_0::xpos=0   sink_0::ypos=0 sink_0::width=540 sink_0::height=960 
     sink_1::xpos=540 sink_1::ypos=0 sink_1::width=540 sink_1::height=960 
   ! videorate drop-only=true max-rate={FRAMES} 
   ! video/x-raw,format=NV12,width=1080,height=960,framerate={FRAMES}/1 
@@ -70,7 +69,9 @@ def build_pipeline(args: Any) -> Tuple[Gst.Pipeline, str]:
   ! rtph265pay pt=96 config-interval=1 mtu=1460 
   ! udpsink host={HOST} port={PORT} sync=false async=false qos=false 
 
-  v4l2src device={LEFT} io-mode=4 
+  v4l2src device={LEFT} io-mode=4
+  ! videoconvert ! \
+  ! perspective matrix="0.0382556255,-0.0290774333,73.3089080,0,-0.0764625186,165.083154,0,-0.0000151444965,0.0764273860" ! \
   ! video/x-raw,format=NV12,width=1920,height=1080,framerate={FRAMES}/1 
   ! videoflip method=counterclockwise 
   ! queue max-size-buffers=2 max-size-time=33333333 leaky=2 
