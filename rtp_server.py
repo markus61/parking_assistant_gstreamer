@@ -39,7 +39,7 @@ m=video {port} RTP/AVP {pt}
 a=rtpmap:{pt} {codec}/90000
 """)
 
-def build_pipeline(args: Any) -> Tuple[Gst.Pipeline, str]:
+def build_pipeline(args: Any) -> Gst.Pipeline:
     """
     Build a pipeline string and parse it.
     - Uses v4l2src for two cameras.
@@ -58,38 +58,38 @@ def build_pipeline(args: Any) -> Tuple[Gst.Pipeline, str]:
     RIGHT="/dev/video22"
 
     pipeline_str = f"""
-  compositor name=stitch background=black start-time-selection=zero latency=0 
-    sink_0::xpos=0   sink_0::ypos=0 sink_0::width=540 sink_0::height=960 
+  compositor name=stitch background=black start-time-selection=zero latency=0
+    sink_0::xpos=0   sink_0::ypos=0 sink_0::width=540 sink_0::height=960
     sink_1::xpos=540 sink_1::ypos=0 sink_1::width=540 sink_1::height=960
-  ! videoconvert 
-  ! videorate drop-only=true max-rate={FRAMES} 
-  ! video/x-raw,format=RGB,width=1080,height=960,framerate={FRAMES}/1 
-  ! queue max-size-buffers=2 max-size-time=33333333 leaky=2 
-  ! mpph265enc rc-mode=cbr bps=6000000 bps-min=4000000 bps-max=8000000 gop={GOP} 
-  ! h265parse config-interval=-1 
-  ! rtph265pay pt=96 config-interval=1 mtu=1460 
-  ! udpsink host={HOST} port={PORT} sync=false async=false qos=false 
+  ! videoconvert
+  ! videorate drop-only=true max-rate={FRAMES}
+  ! video/x-raw,format=RGB,width=1080,height=960,framerate={FRAMES}/1
+  ! queue max-size-buffers=2 max-size-time=33333333 leaky=2
+  ! mpph265enc rc-mode=cbr bps=6000000 bps-min=4000000 bps-max=8000000 gop={GOP}
+  ! h265parse config-interval=-1
+  ! rtph265pay pt=96 config-interval=1 mtu=1460
+  ! udpsink host={HOST} port={PORT} sync=false async=false qos=false
 
   v4l2src device={LEFT} io-mode=4
   ! videoconvert
   ! video/x-raw,format=RGB,width=3840,height=2160,framerate={FRAMES}/1
-  ! perspective
-  ! videoscale method=1 
+  ! perspective name=perspective_left
+  ! videoscale method=1
   ! video/x-raw,format=RGB,width=1920,height=1080,framerate={FRAMES}/1
   ! videoflip method=counterclockwise
   ! video/x-raw,format=RGB,memory=SystemMemory
-  ! queue max-size-buffers=2 max-size-time=33333333 leaky=2 
-  ! stitch.sink_0 
+  ! queue max-size-buffers=2 max-size-time=33333333 leaky=2
+  ! stitch.sink_0
 
   v4l2src device={RIGHT} io-mode=4
   ! videoconvert
   ! video/x-raw,format=RGB,width=3840,height=2160,framerate={FRAMES}/1
-  ! perspective
-  ! videoscale method=1 
+  ! perspective name=perspective_right
+  ! videoscale method=1
   ! video/x-raw,format=RGB,width=1920,height=1080,framerate={FRAMES}/1
-  ! videoflip method=counterclockwise
+  ! videoflip method=clockwise
   ! video/x-raw,format=RGB,memory=SystemMemory
-  ! queue max-size-buffers=2 max-size-time=33333333 leaky=2 
+  ! queue max-size-buffers=2 max-size-time=33333333 leaky=2
   ! stitch.sink_1 """
     return Gst.parse_launch(pipeline_str)
 
@@ -110,6 +110,32 @@ def on_bus_message(bus, msg, loop, pipeline):
             if new == Gst.State.PLAYING:
                 print("Pipeline is PLAYING.")
     return True
+
+
+def set_perspective_matrix(pipeline: Gst.Pipeline, element_name: str, matrix: list) -> bool:
+    """
+    Set the matrix property of a perspective element in the pipeline.
+
+    Args:
+        pipeline: The GStreamer pipeline
+        element_name: Name of the perspective element
+        matrix: List of 16 float values representing a 4x4 transformation matrix
+
+    Returns:
+        True if successful, False otherwise
+    """
+    element = pipeline.get_by_name(element_name)
+    if element is None:
+        print(f"Error: Could not find element '{element_name}' in pipeline")
+        return False
+
+    try:
+        element.set_property("matrix", matrix)
+        print(f"Successfully set matrix for {element_name}")
+        return True
+    except Exception as e:
+        print(f"Error setting matrix for {element_name}: {e}")
+        return False
 
 
 if __name__ == "__main__":
@@ -142,6 +168,19 @@ if __name__ == "__main__":
     if ret == Gst.StateChangeReturn.FAILURE:
         print("Failed to start pipeline.", file=sys.stderr)
         sys.exit(1)
+
+    # Example: Set perspective matrix after pipeline is playing
+    # Identity matrix (no transformation)
+    identity_matrix = [
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0,
+        0.0, 0.0, 0.0, 1.0
+    ]
+
+    # Set matrix for both perspective elements
+    set_perspective_matrix(pipeline, "perspective_left", identity_matrix)
+    set_perspective_matrix(pipeline, "perspective_right", identity_matrix)
 
     try:
         loop.run()
