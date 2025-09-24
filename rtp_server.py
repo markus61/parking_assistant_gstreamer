@@ -55,7 +55,7 @@ def build_pipeline(args: Any) -> str:
   ! videoconvert
   ! video/x-raw,format=RGBA
   ! glupload
-  ! gltransformation name=transform_left
+  ! gleffects effect=identity name=transform_left
   ! gldownload
   ! videoconvert
   ! videoflip method=counterclockwise
@@ -67,7 +67,7 @@ def build_pipeline(args: Any) -> str:
   ! videoconvert
   ! video/x-raw,format=RGBA
   ! glupload
-  ! gltransformation name=transform_right
+  ! gleffects effect=identity name=transform_right
   ! gldownload
   ! videoconvert
   ! videoflip method=clockwise
