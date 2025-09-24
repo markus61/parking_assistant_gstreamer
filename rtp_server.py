@@ -52,12 +52,18 @@ def build_pipeline(args: Any) -> str:
 
   v4l2src device={LEFT} io-mode=4
   ! video/x-raw,format=NV12,width=1920,height=1080,framerate={FRAMES}/1
+  ! videoconvert
+  ! perspective name=perspective_left
+  ! videoconvert
   ! videoflip method=counterclockwise
   ! queue max-size-buffers=2 max-size-time=33333333 leaky=2
   ! stitch.sink_0
 
   v4l2src device={RIGHT} io-mode=4
   ! video/x-raw,format=NV12,width=1920,height=1080,framerate={FRAMES}/1
+  ! videoconvert
+  ! perspective name=perspective_right
+  ! videoconvert
   ! videoflip method=clockwise
   ! queue max-size-buffers=2 max-size-time=33333333 leaky=2
   ! stitch.sink_1
@@ -90,7 +96,7 @@ def set_perspective_matrix(pipeline: Gst.Pipeline, element_name: str, matrix: li
     Args:
         pipeline: The GStreamer pipeline
         element_name: Name of the perspective element
-        matrix: List of 16 float values representing a 4x4 transformation matrix
+        matrix: List of 9 float values representing a 3x3 transformation matrix in row-major order
 
     Returns:
         True if successful, False otherwise
@@ -123,6 +129,15 @@ if __name__ == "__main__":
     print(pipeline_str)
     pipeline = Gst.parse_launch(pipeline_str)
 
+    # Set identity matrix for perspective elements (3x3 matrix, 9 elements)
+    identity_matrix = [
+        1.0, 0.0, 0.0,
+        0.0, 1.0, 0.0,
+        0.0, 0.0, 1.0
+    ]
+    set_perspective_matrix(pipeline, "perspective_left", identity_matrix)
+    set_perspective_matrix(pipeline, "perspective_right", identity_matrix)
+
     # Main loop & bus
     loop = GLib.MainLoop()
     bus = pipeline.get_bus()
@@ -142,17 +157,6 @@ if __name__ == "__main__":
         print("Failed to start pipeline.", file=sys.stderr)
         sys.exit(1)
 
-    # Example: Set perspective matrix after pipeline is playing
-    # Identity matrix (no transformation)
-    identity_matrix = [
-        1.0, 0.0, 0.0,
-        0.0, 1.0, 0.0,
-        0.0, 0.0, 1.0
-    ]
-
-    # Set matrix for both perspective elements
-#    set_perspective_matrix(pipeline, "perspective_left", identity_matrix)
-#    set_perspective_matrix(pipeline, "perspective_right", identity_matrix)
 
     try:
         loop.run()
