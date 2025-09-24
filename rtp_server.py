@@ -62,8 +62,8 @@ def build_pipeline(args: Any) -> Gst.Pipeline:
     sink_0::xpos=0   sink_0::ypos=0 sink_0::width=540 sink_0::height=960 sink_0::alpha=1.0
     sink_1::xpos=540 sink_1::ypos=0 sink_1::width=540 sink_1::height=960 sink_1::alpha=1.0
   ! videoconvert
+  ! video/x-raw,format=NV12,width=1080,height=960,framerate={FRAMES}/1
   ! videorate drop-only=true max-rate={FRAMES}
-  ! video/x-raw,format=RGB,width=1080,height=960,framerate={FRAMES}/1
   ! queue max-size-buffers=2 max-size-time=33333333 leaky=2
   ! mpph264enc rc-mode=cbr bps=6000000 bps-min=4000000 bps-max=8000000 gop={GOP}
   ! h264parse config-interval=-1
@@ -71,18 +71,18 @@ def build_pipeline(args: Any) -> Gst.Pipeline:
   ! udpsink host={HOST} port={PORT} multicast-iface=eth0 auto-multicast=true sync=false async=false qos=false
 
   videotestsrc pattern=0
-  ! video/x-raw,format=RGB,width=540,height=960,framerate={FRAMES}/1
+  ! video/x-raw,format=I420,width=540,height=960,framerate={FRAMES}/1
   ! identity name=perspective_left
+  ! videoconvert
   ! videoflip method=counterclockwise
-  ! video/x-raw,format=RGB,memory=SystemMemory
   ! queue max-size-buffers=2 max-size-time=33333333 leaky=2
   ! stitch.sink_0
 
   videotestsrc pattern=1
-  ! video/x-raw,format=RGB,width=540,height=960,framerate={FRAMES}/1
+  ! video/x-raw,format=I420,width=540,height=960,framerate={FRAMES}/1
   ! identity name=perspective_right
+  ! videoconvert
   ! videoflip method=clockwise
-  ! video/x-raw,format=RGB,memory=SystemMemory
   ! queue max-size-buffers=2 max-size-time=33333333 leaky=2
   ! stitch.sink_1 """
     return Gst.parse_launch(pipeline_str)
