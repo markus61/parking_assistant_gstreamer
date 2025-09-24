@@ -55,7 +55,8 @@ def build_pipeline(args: Any) -> str:
   ! videoconvert
   ! video/x-raw,format=RGBA
   ! gltransformation name=transform_left
-  ! videoconvert
+  ! glcolorconvert
+  ! video/x-raw,format=NV12
   ! videoflip method=counterclockwise
   ! queue max-size-buffers=2 max-size-time=33333333 leaky=2
   ! stitch.sink_0
@@ -65,7 +66,8 @@ def build_pipeline(args: Any) -> str:
   ! videoconvert
   ! video/x-raw,format=RGBA
   ! gltransformation name=transform_right
-  ! videoconvert
+  ! glcolorconvert
+  ! video/x-raw,format=NV12
   ! videoflip method=clockwise
   ! queue max-size-buffers=2 max-size-time=33333333 leaky=2
   ! stitch.sink_1
