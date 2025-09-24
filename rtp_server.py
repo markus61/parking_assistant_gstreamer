@@ -207,19 +207,19 @@ if __name__ == "__main__":
     # Cameras are angled outward from 15m height
     # Top of image covers wider area than bottom -> keystone correction needed
 
-    # Example values for calibration - adjust based on actual camera angles
+    # Start with minimal transformation to avoid segfault
     left_keystone = {
-        "top_scale": 1.2,      # Top wider than bottom
-        "bottom_scale": 0.8,   # Bottom narrower
+        "top_scale": 1.0,      # No scaling initially
+        "bottom_scale": 1.0,   # No scaling initially
         "vertical_offset": 0.0,
-        "rotation_x": -5.0     # Slight downward angle correction
+        "rotation_x": 0.0      # No rotation initially
     }
 
     right_keystone = {
-        "top_scale": 1.2,
-        "bottom_scale": 0.8,
+        "top_scale": 1.0,
+        "bottom_scale": 1.0,
         "vertical_offset": 0.0,
-        "rotation_x": -5.0
+        "rotation_x": 0.0
     }
 
     # Apply keystone correction to both cameras
