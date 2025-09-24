@@ -32,7 +32,7 @@ def build_pipeline(args: Any) -> str:
 
 
     # Clean up double spaces and newlines for readability
-    HOST="239.255.0.10"  # Multicast address
+    HOST="192.168.0.2"  # Multicast address
     PORT=5000
     LEFT="/dev/video31"
     RIGHT="/dev/video22"
