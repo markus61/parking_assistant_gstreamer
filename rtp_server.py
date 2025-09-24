@@ -52,24 +52,14 @@ def build_pipeline(args: Any) -> str:
 
   v4l2src device={LEFT} io-mode=4
   ! video/x-raw,format=NV12,width=1920,height=1080,framerate={FRAMES}/1
-  ! videoconvert
-  ! video/x-raw,format=RGBA
-  ! glupload
-  ! gleffects effect=identity name=transform_left
-  ! gldownload
-  ! videoconvert
+  ! videocrop name=transform_left
   ! videoflip method=counterclockwise
   ! queue max-size-buffers=2 max-size-time=33333333 leaky=2
   ! stitch.sink_0
 
   v4l2src device={RIGHT} io-mode=4
   ! video/x-raw,format=NV12,width=1920,height=1080,framerate={FRAMES}/1
-  ! videoconvert
-  ! video/x-raw,format=RGBA
-  ! glupload
-  ! gleffects effect=identity name=transform_right
-  ! gldownload
-  ! videoconvert
+  ! videocrop name=transform_right
   ! videoflip method=clockwise
   ! queue max-size-buffers=2 max-size-time=33333333 leaky=2
   ! stitch.sink_1
@@ -154,19 +144,20 @@ def create_keystone_matrix(top_scale: float = 1.0, bottom_scale: float = 1.0,
     return matrix
 
 
-def set_gl_transformation(pipeline: Gst.Pipeline, element_name: str,
-                         top_scale: float = 1.0, bottom_scale: float = 1.0,
-                         vertical_offset: float = 0.0, rotation_x: float = 0.0) -> bool:
+def set_crop_keystone(pipeline: Gst.Pipeline, element_name: str,
+                     top_crop: int = 0, bottom_crop: int = 0,
+                     left_crop: int = 0, right_crop: int = 0) -> bool:
     """
-    Set keystone correction for a gltransformation element.
+    Set cropping-based keystone correction for a videocrop element.
+    This is a simplified approach that crops different amounts from each edge.
 
     Args:
         pipeline: The GStreamer pipeline
-        element_name: Name of the gltransformation element
-        top_scale: Horizontal scaling at top (>1.0 = wider, <1.0 = narrower)
-        bottom_scale: Horizontal scaling at bottom
-        vertical_offset: Vertical position adjustment
-        rotation_x: X-axis rotation for perspective effect
+        element_name: Name of the videocrop element
+        top_crop: Pixels to crop from top
+        bottom_crop: Pixels to crop from bottom
+        left_crop: Pixels to crop from left
+        right_crop: Pixels to crop from right
 
     Returns:
         True if successful, False otherwise
@@ -177,15 +168,15 @@ def set_gl_transformation(pipeline: Gst.Pipeline, element_name: str,
         return False
 
     try:
-        # For now, use individual properties instead of full matrix
-        element.set_property("rotation-x", rotation_x)
-        element.set_property("scale-x", (top_scale + bottom_scale) / 2.0)
-        element.set_property("translation-y", vertical_offset)
+        element.set_property("top", top_crop)
+        element.set_property("bottom", bottom_crop)
+        element.set_property("left", left_crop)
+        element.set_property("right", right_crop)
 
-        print(f"Successfully set GL transformation for {element_name}")
+        print(f"Successfully set crop keystone for {element_name}: top={top_crop}, bottom={bottom_crop}, left={left_crop}, right={right_crop}")
         return True
     except Exception as e:
-        print(f"Error setting GL transformation for {element_name}: {e}")
+        print(f"Error setting crop keystone for {element_name}: {e}")
         return False
 
 
@@ -203,28 +194,29 @@ if __name__ == "__main__":
     print(pipeline_str)
     pipeline = Gst.parse_launch(pipeline_str)
 
-    # Set initial keystone correction for camera calibration
+    # Set initial cropping-based keystone correction for camera calibration
     # Cameras are angled outward from 15m height
-    # Top of image covers wider area than bottom -> keystone correction needed
+    # Top of image covers wider area than bottom -> crop to compensate for trapezoid
 
-    # Start with minimal transformation to avoid segfault
-    left_keystone = {
-        "top_scale": 1.0,      # No scaling initially
-        "bottom_scale": 1.0,   # No scaling initially
-        "vertical_offset": 0.0,
-        "rotation_x": 0.0      # No rotation initially
+    # Example: crop more from sides at top, less at bottom to create rectangular view
+    # Adjust these values based on actual camera mounting angles
+    left_crop_settings = {
+        "top_crop": 50,      # Crop from top
+        "bottom_crop": 20,   # Less crop from bottom
+        "left_crop": 100,    # Crop from left side
+        "right_crop": 50     # Less crop from right
     }
 
-    right_keystone = {
-        "top_scale": 1.0,
-        "bottom_scale": 1.0,
-        "vertical_offset": 0.0,
-        "rotation_x": 0.0
+    right_crop_settings = {
+        "top_crop": 50,
+        "bottom_crop": 20,
+        "left_crop": 50,     # Less crop from left
+        "right_crop": 100    # More crop from right
     }
 
-    # Apply keystone correction to both cameras
-    set_gl_transformation(pipeline, "transform_left", **left_keystone)
-    set_gl_transformation(pipeline, "transform_right", **right_keystone)
+    # Apply cropping-based keystone correction
+    set_crop_keystone(pipeline, "transform_left", **left_crop_settings)
+    set_crop_keystone(pipeline, "transform_right", **right_crop_settings)
 
     # Main loop & bus
     loop = GLib.MainLoop()
