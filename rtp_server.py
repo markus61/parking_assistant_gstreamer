@@ -65,9 +65,9 @@ def build_pipeline(args: Any) -> Gst.Pipeline:
   ! videorate drop-only=true max-rate={FRAMES}
   ! video/x-raw,format=RGB,width=1080,height=960,framerate={FRAMES}/1
   ! queue max-size-buffers=2 max-size-time=33333333 leaky=2
-  ! mpph265enc rc-mode=cbr bps=6000000 bps-min=4000000 bps-max=8000000 gop={GOP}
-  ! h265parse config-interval=-1
-  ! rtph265pay pt=96 config-interval=1 mtu=1460 aggregate-mode=zero-latency
+  ! mpph264enc rc-mode=cbr bps=6000000 bps-min=4000000 bps-max=8000000 gop={GOP}
+  ! h264parse config-interval=-1
+  ! rtph264pay pt=96 config-interval=1 mtu=1460
   ! udpsink host={HOST} port={PORT} multicast-iface=eth0 auto-multicast=true sync=false async=false qos=false
 
   v4l2src device={LEFT} io-mode=4
