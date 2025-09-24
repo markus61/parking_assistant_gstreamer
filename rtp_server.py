@@ -52,7 +52,7 @@ def build_pipeline(args: Any) -> Gst.Pipeline:
     # Clean up double spaces and newlines for readability
     FRAMES=30
     GOP=1*FRAMES
-    HOST="192.168.0.2"
+    HOST="239.255.0.10"  # Multicast address
     PORT=5000
     LEFT="/dev/video31"
     RIGHT="/dev/video22"
