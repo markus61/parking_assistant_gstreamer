@@ -25,73 +25,44 @@ gi.require_version("GObject", "2.0")
 gi.require_version("GstRtspServer", "1.0")
 from gi.repository import Gst, GLib, GObject, GstRtspServer
 
-def print_sdp(addr: str, port: int, codec: str = "H265", pt: int = 96) -> None:
+def build_pipeline(args: Any) -> str:
     """
-    Minimal SDP for an RTP multicast HEVC stream.
-    We rely on in-band VPS/SPS/PPS via config-interval=1 in the payloader.
-    """
-    print(f"""v=0
-o=- 0 0 IN IP4 {addr}
-s=Rock5B HEVC
-c=IN IP4 {addr}
-t=0 0
-m=video {port} RTP/AVP {pt}
-a=rtpmap:{pt} {codec}/90000
-""")
-
-def build_pipeline(args: Any) -> Gst.Pipeline:
-    """
-    Build a pipeline string and parse it.
-    - Uses v4l2src for two cameras.
-    - Stitches horizontally (hstack), then crops to desired WxH.
-    - Encodes with hardware HEVC encoder.
-    - Payloads to RTP (H.265) and multicasts via udpsink.
+    Build a pipeline string.
     """
 
 
     # Clean up double spaces and newlines for readability
-    FRAMES=30
-    GOP=15
     HOST="239.255.0.10"  # Multicast address
     PORT=5000
     LEFT="/dev/video31"
     RIGHT="/dev/video22"
 
+    FRAMES=30
     pipeline_str = f"""
   compositor name=stitch background=black start-time-selection=zero latency=0
-    sink_0::xpos=0   sink_0::ypos=0 sink_0::width=540 sink_0::height=960
+    sink_0::xpos=0    sink_0::ypos=0 sink_0::width=540 sink_0::height=960
     sink_1::xpos=540 sink_1::ypos=0 sink_1::width=540 sink_1::height=960
-  ! videoconvert
   ! videorate drop-only=true max-rate={FRAMES}
-  ! video/x-raw,format=RGB,width=1080,height=960,framerate={FRAMES}/1
+  ! video/x-raw,format=NV12,width=1080,height=960,framerate={FRAMES}/1
   ! queue max-size-buffers=2 max-size-time=33333333 leaky=2
-  ! mpph265enc rc-mode=cbr bps=6000000 bps-min=4000000 bps-max=8000000 gop={GOP}
+  ! mpph265enc rc-mode=cbr bps=6000000 bps-min=4000000 bps-max=8000000 gop=15
   ! h265parse config-interval=-1
-  ! rtph265pay pt=96 config-interval=1 mtu=1460 aggregate-mode=zero-latency
-  ! udpsink host={HOST} port={PORT} multicast-iface=eth0 auto-multicast=true sync=false async=false qos=false
+  ! rtph265pay pt=96 config-interval=1 mtu=1460
+  ! udpsink host={HOST} port={PORT} sync=false async=false qos=false
 
   v4l2src device={LEFT} io-mode=4
-  ! videoconvert
-  ! video/x-raw,format=RGB,width=3840,height=2160,framerate={FRAMES}/1
-  ! perspective name=perspective_left
-  ! videoscale method=1
-  ! video/x-raw,format=RGB,width=1920,height=1080,framerate={FRAMES}/1
+  ! video/x-raw,format=NV12,width=1920,height=1080,framerate={FRAMES}/1
   ! videoflip method=counterclockwise
-  ! video/x-raw,format=RGB,memory=SystemMemory
   ! queue max-size-buffers=2 max-size-time=33333333 leaky=2
   ! stitch.sink_0
 
   v4l2src device={RIGHT} io-mode=4
-  ! videoconvert
-  ! video/x-raw,format=RGB,width=3840,height=2160,framerate={FRAMES}/1
-  ! perspective name=perspective_right
-  ! videoscale method=1
-  ! video/x-raw,format=RGB,width=1920,height=1080,framerate={FRAMES}/1
+  ! video/x-raw,format=NV12,width=1920,height=1080,framerate={FRAMES}/1
   ! videoflip method=clockwise
-  ! video/x-raw,format=RGB,memory=SystemMemory
   ! queue max-size-buffers=2 max-size-time=33333333 leaky=2
-  ! stitch.sink_1 """
-    return Gst.parse_launch(pipeline_str)
+  ! stitch.sink_1
+  """
+    return pipeline_str
 
 def on_bus_message(bus, msg, loop, pipeline):
     """Handle GStreamer bus messages."""
@@ -146,9 +117,11 @@ if __name__ == "__main__":
 
     # Write SDP
 
-    print("Launching pipeline")
-
-    pipeline = build_pipeline(None)
+    print("Launching pipeline from pipeline string:")
+    print("-----------------------------------")
+    pipeline_str = build_pipeline(None)
+    print(pipeline_str)
+    pipeline = Gst.parse_launch(pipeline_str)
 
     # Main loop & bus
     loop = GLib.MainLoop()
@@ -172,15 +145,14 @@ if __name__ == "__main__":
     # Example: Set perspective matrix after pipeline is playing
     # Identity matrix (no transformation)
     identity_matrix = [
-        1.0, 0.0, 0.0, 0.0,
-        0.0, 1.0, 0.0, 0.0,
-        0.0, 0.0, 1.0, 0.0,
-        0.0, 0.0, 0.0, 1.0
+        1.0, 0.0, 0.0,
+        0.0, 1.0, 0.0,
+        0.0, 0.0, 1.0
     ]
 
     # Set matrix for both perspective elements
-    set_perspective_matrix(pipeline, "perspective_left", identity_matrix)
-    set_perspective_matrix(pipeline, "perspective_right", identity_matrix)
+#    set_perspective_matrix(pipeline, "perspective_left", identity_matrix)
+#    set_perspective_matrix(pipeline, "perspective_right", identity_matrix)
 
     try:
         loop.run()
