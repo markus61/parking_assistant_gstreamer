@@ -53,6 +53,8 @@ def build_pipeline(args: Any) -> str:
   v4l2src device={LEFT} io-mode=4
   ! video/x-raw,format=NV12,width=1920,height=1080,framerate={FRAMES}/1
   ! videoconvert
+  ! video/x-raw,format=RGBA
+  ! glupload
   ! gltransformation name=transform_left
   ! gldownload
   ! videoconvert
@@ -63,6 +65,8 @@ def build_pipeline(args: Any) -> str:
   v4l2src device={RIGHT} io-mode=4
   ! video/x-raw,format=NV12,width=1920,height=1080,framerate={FRAMES}/1
   ! videoconvert
+  ! video/x-raw,format=RGBA
+  ! glupload
   ! gltransformation name=transform_right
   ! gldownload
   ! videoconvert
