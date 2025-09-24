@@ -119,7 +119,7 @@ def set_perspective_matrix(pipeline: Gst.Pipeline, element_name: str, matrix: li
     Args:
         pipeline: The GStreamer pipeline
         element_name: Name of the perspective element
-        matrix: List of 16 float values representing a 4x4 transformation matrix
+        matrix: List of 9 float values representing a 3x3 transformation matrix in row-major order
 
     Returns:
         True if successful, False otherwise
@@ -150,12 +150,11 @@ if __name__ == "__main__":
 
     pipeline = build_pipeline(None)
 
-    # Set perspective matrix before starting pipeline
+    # Set perspective matrix before starting pipeline (3x3 matrix, 9 elements)
     identity_matrix = [
-        1.0, 0.0, 0.0, 0.0,
-        0.0, 1.0, 0.0, 0.0,
-        0.0, 0.0, 1.0, 0.0,
-        0.0, 0.0, 0.0, 1.0
+        1.0, 0.0, 0.0,
+        0.0, 1.0, 0.0,
+        0.0, 0.0, 1.0
     ]
     set_perspective_matrix(pipeline, "perspective_left", identity_matrix)
     set_perspective_matrix(pipeline, "perspective_right", identity_matrix)
