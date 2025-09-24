@@ -72,7 +72,7 @@ def build_pipeline(args: Any) -> Tuple[Gst.Pipeline, str]:
   v4l2src device={LEFT} io-mode=4
   ! video/x-raw,format=NV12,width=3840,height=2160,framerate={FRAMES}/1
   ! perspective
-  ! videoconvert 
+  ! videoscale method=1 
   ! video/x-raw,format=NV12,width=1920,height=1080,framerate={FRAMES}/1
   ! videoflip method=counterclockwise 
   ! queue max-size-buffers=2 max-size-time=33333333 leaky=2 
