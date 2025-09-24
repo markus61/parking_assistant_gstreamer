@@ -54,7 +54,7 @@ def build_pipeline(args: Any) -> str:
   v4l2src device={LEFT} io-mode=4
   ! videoconvert
   ! video/x-raw,format=RGBA,width=1920,height=1080,framerate={FRAMES}/1
-  ! perspective name=perspective_left
+  ! identity name=perspective_left
   ! videoflip method=counterclockwise
   ! queue max-size-buffers=2 max-size-time=33333333 leaky=2
   ! stitch.sink_0
@@ -62,7 +62,7 @@ def build_pipeline(args: Any) -> str:
   v4l2src device={RIGHT} io-mode=4
   ! videoconvert
   ! video/x-raw,format=RGBA,width=1920,height=1080,framerate={FRAMES}/1
-  ! perspective name=perspective_right
+  ! identity name=perspective_right
   ! videoflip method=clockwise
   ! queue max-size-buffers=2 max-size-time=33333333 leaky=2
   ! stitch.sink_1
@@ -134,8 +134,8 @@ if __name__ == "__main__":
         0.0, 1.0, 0.0,
         0.0, 0.0, 1.0
     ]
-    set_perspective_matrix(pipeline, "perspective_left", identity_matrix)
-    set_perspective_matrix(pipeline, "perspective_right", identity_matrix)
+#    set_perspective_matrix(pipeline, "perspective_left", identity_matrix)
+#    set_perspective_matrix(pipeline, "perspective_right", identity_matrix)
 
     # Main loop & bus
     loop = GLib.MainLoop()
