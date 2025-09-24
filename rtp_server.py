@@ -150,6 +150,16 @@ if __name__ == "__main__":
 
     pipeline = build_pipeline(None)
 
+    # Set perspective matrix before starting pipeline
+    identity_matrix = [
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0,
+        0.0, 0.0, 0.0, 1.0
+    ]
+    set_perspective_matrix(pipeline, "perspective_left", identity_matrix)
+    set_perspective_matrix(pipeline, "perspective_right", identity_matrix)
+
     # Main loop & bus
     loop = GLib.MainLoop()
     bus = pipeline.get_bus()
@@ -169,23 +179,6 @@ if __name__ == "__main__":
         print("Failed to start pipeline.", file=sys.stderr)
         sys.exit(1)
 
-    # Example: Set perspective matrix after pipeline is playing
-    # Identity matrix (no transformation)
-    identity_matrix = [
-        1.0, 0.0, 0.0, 0.0,
-        0.0, 1.0, 0.0, 0.0,
-        0.0, 0.0, 1.0, 0.0,
-        0.0, 0.0, 0.0, 1.0
-    ]
-    test_matrix = [
-      1.0, 0.0, 0.0, 0.0,
-      0.0, 1.0, 0.0, 0.0,
-      0.0, 0.0, 1.0, 0.0,
-      0.0, 0.0, 0.0, 1.0
-    ]
-    # Set matrix for both perspective elements
-    set_perspective_matrix(pipeline, "perspective_left", test_matrix)
-    set_perspective_matrix(pipeline, "perspective_right", test_matrix)
 
     try:
         loop.run()
