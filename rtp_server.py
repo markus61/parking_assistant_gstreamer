@@ -74,8 +74,9 @@ def build_pipeline(args: Any) -> Tuple[Gst.Pipeline, str]:
   ! perspective
   ! videoscale method=1 
   ! video/x-raw,format=RGBA,width=1920,height=1080,framerate={FRAMES}/1
-  ! videoflip method=counterclockwise 
-  ! video/x-raw,format=NV12,width=1080,height=1920,framerate={FRAMES}/1 
+  ! videoflip method=counterclockwise
+  ! videoconvert
+  ! video/x-raw,format=AYUV,memory=SystemMemory
   ! queue max-size-buffers=2 max-size-time=33333333 leaky=2 
   ! stitch.sink_0 
 
