@@ -76,6 +76,120 @@ def on_bus_message(bus, msg, loop, pipeline):
             if new == Gst.State.PLAYING:
                 print("Pipeline is PLAYING.")
     return True
+def create_pipeline():
+    HOST = "192.168.0.2"
+    PORT = 5000
+
+    # Create pipeline
+    pipeline = Gst.Pipeline.new("2eyes-pipeline")
+
+    # Create elements - Camera 0 branch
+    v4l2src0 = Gst.ElementFactory.make("v4l2src", "cam0")
+    v4l2src0.set_property("device", "/dev/video31")
+    v4l2src0.set_property("io-mode", 4)
+
+    caps0 = Gst.Caps.from_string("video/x-raw,format=NV12,width=1280,height=720,framerate=10/1")
+    capsfilter0 = Gst.ElementFactory.make("capsfilter", "caps0")
+    capsfilter0.set_property("caps", caps0)
+
+    glupload0 = Gst.ElementFactory.make("glupload", "glupload0")
+    glcolorconvert0 = Gst.ElementFactory.make("glcolorconvert", "glcolorconvert0")
+    glcolorscale0 = Gst.ElementFactory.make("glcolorscale", "glcolorscale0")
+
+    caps0_scale = Gst.Caps.from_string("video/x-raw,format=(string)RGBA,width=340,height=640,framerate=10/1")
+    capsfilter0_scale = Gst.ElementFactory.make("capsfilter", "caps0_scale")
+    capsfilter0_scale.set_property("caps", caps0_scale)
+
+    # Create elements - Camera 1 branch
+    v4l2src1 = Gst.ElementFactory.make("v4l2src", "cam1")
+    v4l2src1.set_property("device", "/dev/video22")
+    v4l2src1.set_property("io-mode", 4)
+
+    caps1 = Gst.Caps.from_string("video/x-raw,format=NV12,width=1280,height=720,framerate=10/1")
+    capsfilter1 = Gst.ElementFactory.make("capsfilter", "caps1")
+    capsfilter1.set_property("caps", caps1)
+
+    glupload1 = Gst.ElementFactory.make("glupload", "glupload1")
+    glcolorconvert1 = Gst.ElementFactory.make("glcolorconvert", "glcolorconvert1")
+    glcolorscale1 = Gst.ElementFactory.make("glcolorscale", "glcolorscale1")
+
+    caps1_scale = Gst.Caps.from_string("video/x-raw,format=(string)RGBA,width=340,height=640,framerate=10/1")
+    capsfilter1_scale = Gst.ElementFactory.make("capsfilter", "caps1_scale")
+    capsfilter1_scale.set_property("caps", caps1_scale)
+
+    # Create mixer
+    mixer = Gst.ElementFactory.make("glvideomixer", "mix")
+
+    # Create output branch
+    gldownload = Gst.ElementFactory.make("gldownload", "gldownload")
+    videoconvert = Gst.ElementFactory.make("videoconvert", "videoconvert")
+
+    caps_output = Gst.Caps.from_string("video/x-raw,format=NV12,framerate=10/1")
+    capsfilter_output = Gst.ElementFactory.make("capsfilter", "caps_output")
+    capsfilter_output.set_property("caps", caps_output)
+
+    encoder = Gst.ElementFactory.make("mpph265enc", "encoder")
+    encoder.set_property("rc-mode", "cbr")
+    encoder.set_property("bps", 2000000)
+    encoder.set_property("gop", 15)
+
+    payloader = Gst.ElementFactory.make("rtph265pay", "payloader")
+    payloader.set_property("pt", 96)
+    payloader.set_property("config-interval", 1)
+    payloader.set_property("mtu", 1200)
+
+    udpsink = Gst.ElementFactory.make("udpsink", "udpsink")
+    udpsink.set_property("host", HOST)
+    udpsink.set_property("port", PORT)
+    udpsink.set_property("sync", False)
+    udpsink.set_property("async", False)
+    udpsink.set_property("qos", False)
+
+    # Add all elements to pipeline
+    pipeline.add(v4l2src0, capsfilter0, glupload0, glcolorconvert0, glcolorscale0, capsfilter0_scale)
+    pipeline.add(v4l2src1, capsfilter1, glupload1, glcolorconvert1, glcolorscale1, capsfilter1_scale)
+    pipeline.add(mixer, gldownload, videoconvert, capsfilter_output, encoder, payloader, udpsink)
+
+    # Link camera 0 branch
+    v4l2src0.link(capsfilter0)
+    capsfilter0.link(glupload0)
+    glupload0.link(glcolorconvert0)
+    glcolorconvert0.link(glcolorscale0)
+    glcolorscale0.link(capsfilter0_scale)
+
+    # Link camera 1 branch
+    v4l2src1.link(capsfilter1)
+    capsfilter1.link(glupload1)
+    glupload1.link(glcolorconvert1)
+    glcolorconvert1.link(glcolorscale1)
+    glcolorscale1.link(capsfilter1_scale)
+
+    # Link camera branches to mixer with pad properties
+    sink_pad_0 = mixer.get_request_pad("sink_0")
+    sink_pad_0.set_property("xpos", 0)
+    sink_pad_0.set_property("ypos", 0)
+    sink_pad_0.set_property("height", 640)
+    sink_pad_0.set_property("alpha", 1.0)
+    src_pad_0 = capsfilter0_scale.get_static_pad("src")
+    src_pad_0.link(sink_pad_0)
+
+    sink_pad_1 = mixer.get_request_pad("sink_1")
+    sink_pad_1.set_property("xpos", 340)
+    sink_pad_1.set_property("ypos", 0)
+    sink_pad_1.set_property("height", 640)
+    sink_pad_1.set_property("alpha", 1.0)
+    src_pad_1 = capsfilter1_scale.get_static_pad("src")
+    src_pad_1.link(sink_pad_1)
+
+    # Link output branch
+    mixer.link(gldownload)
+    gldownload.link(videoconvert)
+    videoconvert.link(capsfilter_output)
+    capsfilter_output.link(encoder)
+    encoder.link(payloader)
+    payloader.link(udpsink)
+
+    return pipeline
 
 if __name__ == "__main__":
 
@@ -86,7 +200,7 @@ if __name__ == "__main__":
     print("-----------------------------------")
     pipeline_str = build_pipeline(None)
     print(pipeline_str)
-    pipeline = Gst.parse_launch(pipeline_str)
+    pipeline = create_pipeline()
 
     # Main loop & bus
     loop = GLib.MainLoop()
