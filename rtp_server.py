@@ -41,13 +41,16 @@ v4l2src device=/dev/video31 io-mode=4
     ! glupload ! glcolorconvert
     ! glcolorscale
     ! 'video/x-raw,format=(string)RGBA,width=340,height=640,framerate=15/1'
-    ! mix.sink_0
+    ! gldownload
+    ! fakevideosink sync=false
 v4l2src device=/dev/video22 io-mode=4
     ! video/x-raw,format=NV12,width=1280,height=720,framerate=10/1
     ! glupload ! glcolorconvert
     ! glcolorscale
     ! 'video/x-raw(memory:GLMemory),format=(string)RGBA,width=340,height=640,framerate=15/1'
-    ! mix.sink_1
+    ! gldownload
+    ! fakevideosink sync=false
+
   """
     return pipeline_str
 
