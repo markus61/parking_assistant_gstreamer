@@ -40,13 +40,13 @@ v4l2src device=/dev/video31 io-mode=4
     ! video/x-raw,format=NV12,width=1280,height=720,framerate=10/1
     ! glupload ! glcolorconvert
     ! glcolorscale
-    ! 'video/x-raw,format=(string)RGBA,width=340,height=640,framerate=15/1'
+    ! 'video/x-raw,format=(string)RGBA,width=340,height=640,framerate=10/1'
     ! mix.sink_0
 v4l2src device=/dev/video22 io-mode=4
     ! video/x-raw,format=NV12,width=1280,height=720,framerate=10/1
     ! glupload ! glcolorconvert
     ! glcolorscale
-    ! 'video/x-raw,format=(string)RGBA,width=340,height=640,framerate=15/1'
+    ! 'video/x-raw,format=(string)RGBA,width=340,height=640,framerate=10/1'
     ! mix.sink_1
 glvideomixer name=mix
     sink_0::xpos=0  sink_0::ypos=0 sink_0::height=640 sink_0::alpha=1.0
