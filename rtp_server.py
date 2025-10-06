@@ -42,6 +42,12 @@ v4l2src device=/dev/video31 io-mode=4
     ! glcolorscale
     ! 'video/x-raw,format=(string)RGBA,width=340,height=640,framerate=15/1'
     ! mix.sink_0
+v4l2src device=/dev/video22 io-mode=4
+    ! video/x-raw,format=NV12,width=1280,height=720,framerate=10/1
+    ! glupload ! glcolorconvert
+    ! glcolorscale
+    ! 'video/x-raw(memory:GLMemory),format=(string)RGBA,width=340,height=640,framerate=15/1'
+    ! mix.sink_1
 glvideomixer name=mix
     sink_0::xpos=0  sink_0::ypos=0 sink_0::height=640 sink_0::alpha=1.0
     sink_1::xpos=340 sink_1::ypos=0 sink_1::height=640 sink_1::alpha=1.0
@@ -175,6 +181,7 @@ if __name__ == "__main__":
     print("-----------------------------------")
     pipeline_str = build_pipeline(None)
     print(pipeline_str)
+    pipeline = Gst.Pipeline.new("2eyes-pipeline")
     pipeline = Gst.parse_launch(pipeline_str)
 
     # Set initial keystone correction for camera calibration
@@ -197,8 +204,8 @@ if __name__ == "__main__":
     }
 
     # Apply keystone correction to both cameras
-    set_gl_transformation(pipeline, "transform_left", **left_keystone)
-    set_gl_transformation(pipeline, "transform_right", **right_keystone)
+    # set_gl_transformation(pipeline, "transform_left", **left_keystone)
+    # set_gl_transformation(pipeline, "transform_right", **right_keystone)
 
     # Main loop & bus
     loop = GLib.MainLoop()
