@@ -165,7 +165,7 @@ def create_pipeline():
     glcolorscale1.link(capsfilter1_scale)
 
     # Link camera branches to mixer with pad properties
-    sink_pad_0 = mixer.get_request_pad("sink_0")
+    sink_pad_0 = mixer.request_pad_simple("sink_%u")
     sink_pad_0.set_property("xpos", 0)
     sink_pad_0.set_property("ypos", 0)
     sink_pad_0.set_property("height", 640)
@@ -175,7 +175,7 @@ def create_pipeline():
     if link_result_0 != Gst.PadLinkReturn.OK:
         print(f"Failed to link camera 0 to mixer: {link_result_0}")
 
-    sink_pad_1 = mixer.get_request_pad("sink_1")
+    sink_pad_1 = mixer.request_pad_simple("sink_%u")
     sink_pad_1.set_property("xpos", 340)
     sink_pad_1.set_property("ypos", 0)
     sink_pad_1.set_property("height", 640)
