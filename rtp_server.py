@@ -41,7 +41,6 @@ v4l2src device=/dev/video31 io-mode=4
     ! glupload ! glcolorconvert
     ! glcolorscale
     ! 'video/x-raw,format=(string)RGBA,width=340,height=640,framerate=15/1'
-    ! gldownload ! fakevideosink
     ! mix.sink_0
 v4l2src device=/dev/video22 io-mode=4
     ! video/x-raw,format=NV12,width=1280,height=720,framerate=10/1
