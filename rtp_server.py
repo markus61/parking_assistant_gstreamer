@@ -41,16 +41,21 @@ v4l2src device=/dev/video31 io-mode=4
     ! glupload ! glcolorconvert
     ! glcolorscale
     ! 'video/x-raw,format=(string)RGBA,width=340,height=640,framerate=15/1'
-    ! gldownload
-    ! fakevideosink sync=false
+    ! mix.sink_0
 v4l2src device=/dev/video22 io-mode=4
     ! video/x-raw,format=NV12,width=1280,height=720,framerate=10/1
     ! glupload ! glcolorconvert
     ! glcolorscale
-    ! 'video/x-raw(memory:GLMemory),format=(string)RGBA,width=340,height=640,framerate=15/1'
+    ! 'video/x-raw,format=(string)RGBA,width=340,height=640,framerate=15/1'
+    ! mix.sink_1
+glvideomixer name=mix
+    sink_0::xpos=0  sink_0::ypos=0 sink_0::height=640 sink_0::alpha=1.0
+    sink_1::xpos=340 sink_1::ypos=0 sink_1::height=640 sink_1::alpha=1.0
     ! gldownload
-    ! fakevideosink sync=false
-
+    ! videoconvert ! 'video/x-raw,format=NV12'
+    ! mpph265enc rc-mode=cbr bps=2000000 gop=15
+    ! rtph265pay pt=96 config-interval=1 mtu=1200
+    ! udpsink host=${HOST} port=${PORT} sync=false async=false qos=false
   """
     return pipeline_str
 
