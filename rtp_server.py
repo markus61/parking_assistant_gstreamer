@@ -36,7 +36,7 @@ def build_pipeline(args: Any) -> str:
     PORT=5000
 
     pipeline_str = f"""
-  v4l2src device=/dev/video31 io-mode=4
+v4l2src device=/dev/video31 io-mode=4
     ! video/x-raw,format=NV12,width=1280,height=720,framerate=10/1
     ! glupload ! glcolorconvert
     ! gltransformation ortho=false fov=59 rotation-x=0 rotation-y=0 pivot-x=0
@@ -44,8 +44,7 @@ def build_pipeline(args: Any) -> str:
     ! glcolorscale
     ! 'video/x-raw(memory:GLMemory),format=(string)RGBA,width=340,height=640,framerate=15/1'
     ! mix.sink_0
-
-      v4l2src device=/dev/video22 io-mode=4
+v4l2src device=/dev/video22 io-mode=4
     ! video/x-raw,format=NV12,width=1280,height=720,framerate=10/1
     ! glupload ! glcolorconvert
     ! gltransformation ortho=false fov=59 rotation-x=0 rotation-y=0  pivot-x=0
@@ -53,8 +52,7 @@ def build_pipeline(args: Any) -> str:
     ! glcolorscale
     ! 'video/x-raw(memory:GLMemory),format=(string)RGBA,width=340,height=640,framerate=15/1'
     ! mix.sink_1
-
-  glvideomixer name=mix
+glvideomixer name=mix
     sink_0::xpos=0  sink_0::ypos=0 sink_0::height=640 sink_0::alpha=1.0
     sink_1::xpos=320 sink_1::ypos=0 sink_1::height=640 sink_1::alpha=1.0
     ! gldownload
