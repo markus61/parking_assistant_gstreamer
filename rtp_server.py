@@ -39,11 +39,13 @@ def build_pipeline(args: Any) -> str:
 v4l2src device=/dev/video31 io-mode=4
     ! video/x-raw,format=NV12,width=1280,height=720,framerate=10/1
     ! glupload ! glcolorconvert ! video/x-raw(memory:GLMemory),format=RGBA
+    ! glvideoflip video-direction=90l
     ! glcolorscale ! video/x-raw(memory:GLMemory),format=RGBA,width=340,height=640,framerate=10/1
     ! mix.sink_0
 v4l2src device=/dev/video22 io-mode=4
     ! video/x-raw,format=NV12,width=1280,height=720,framerate=10/1
     ! glupload ! glcolorconvert ! video/x-raw(memory:GLMemory),format=RGBA
+    ! glvideoflip video-direction=90r
     ! glcolorscale ! video/x-raw(memory:GLMemory),format=RGBA,width=340,height=640,framerate=10/1
     ! mix.sink_1
 glvideomixer name=mix
