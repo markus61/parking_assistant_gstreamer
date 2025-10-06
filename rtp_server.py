@@ -55,7 +55,7 @@ glvideomixer name=mix
     ! videoconvert ! 'video/x-raw,format=NV12'
     ! mpph265enc rc-mode=cbr bps=2000000 gop=15
     ! rtph265pay pt=96 config-interval=1 mtu=1200
-    ! udpsink host=${HOST} port=${PORT} sync=false async=false qos=false
+    ! udpsink host={HOST} port={PORT} sync=false async=false qos=false
   """
     return pipeline_str
 
