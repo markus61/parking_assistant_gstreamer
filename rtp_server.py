@@ -39,9 +39,6 @@ def build_pipeline(args: Any) -> str:
 v4l2src device=/dev/video31 io-mode=4
     ! video/x-raw,format=NV12,width=1280,height=720,framerate=10/1
     ! glupload ! glcolorconvert
-    ! gltransformation ortho=false fov=59 rotation-x=0 rotation-y=0 rotation-z=90 pivot-x=0
-"""
-    better_pipeline = f"""
     ! glcolorscale
     ! 'video/x-raw,format=(string)RGBA,width=340,height=640,framerate=15/1'
     ! gldownload ! fakevideosink
@@ -49,7 +46,6 @@ v4l2src device=/dev/video31 io-mode=4
 v4l2src device=/dev/video22 io-mode=4
     ! video/x-raw,format=NV12,width=1280,height=720,framerate=10/1
     ! glupload ! glcolorconvert
-    ! gltransformation ortho=false fov=59 rotation-x=0 rotation-y=0 rotation-z=-90 pivot-x=0
     ! glcolorscale
     ! 'video/x-raw(memory:GLMemory),format=(string)RGBA,width=340,height=640,framerate=15/1'
     ! mix.sink_1
