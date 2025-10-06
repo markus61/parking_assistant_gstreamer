@@ -171,7 +171,9 @@ def create_pipeline():
     sink_pad_0.set_property("height", 640)
     sink_pad_0.set_property("alpha", 1.0)
     src_pad_0 = capsfilter0_scale.get_static_pad("src")
-    src_pad_0.link(sink_pad_0)
+    link_result_0 = src_pad_0.link(sink_pad_0)
+    if link_result_0 != Gst.PadLinkReturn.OK:
+        print(f"Failed to link camera 0 to mixer: {link_result_0}")
 
     sink_pad_1 = mixer.get_request_pad("sink_1")
     sink_pad_1.set_property("xpos", 340)
@@ -179,7 +181,9 @@ def create_pipeline():
     sink_pad_1.set_property("height", 640)
     sink_pad_1.set_property("alpha", 1.0)
     src_pad_1 = capsfilter1_scale.get_static_pad("src")
-    src_pad_1.link(sink_pad_1)
+    link_result_1 = src_pad_1.link(sink_pad_1)
+    if link_result_1 != Gst.PadLinkReturn.OK:
+        print(f"Failed to link camera 1 to mixer: {link_result_1}")
 
     # Link output branch
     mixer.link(gldownload)
