@@ -38,19 +38,17 @@ def build_pipeline(args: Any) -> str:
     pipeline_str = f"""
 v4l2src device=/dev/video31 io-mode=4
     ! video/x-raw,format=NV12,width=1280,height=720,framerate=10/1
-    ! glupload ! glcolorconvert
-    ! glcolorscale
-    ! 'video/x-raw,format=(string)RGBA,width=340,height=640,framerate=10/1'
+    ! glupload ! glcolorconvert ! glcolorscale
+    ! video/x-raw,format=RGBA,width=340,height=640,framerate=10/1
     ! mix.sink_0
 v4l2src device=/dev/video22 io-mode=4
     ! video/x-raw,format=NV12,width=1280,height=720,framerate=10/1
-    ! glupload ! glcolorconvert
-    ! glcolorscale
-    ! 'video/x-raw,format=(string)RGBA,width=340,height=640,framerate=10/1'
+    ! glupload ! glcolorconvert ! glcolorscale
+    ! video/x-raw,format=RGBA,width=340,height=640,framerate=10/1
     ! mix.sink_1
 glvideomixer name=mix
     ! gldownload
-    ! videoconvert ! 'video/x-raw,format=NV12,framerate=10/1'
+    ! videoconvert ! video/x-raw,format=NV12,framerate=10/1
     ! mpph265enc rc-mode=cbr bps=2000000 gop=15
     ! rtph265pay pt=96 config-interval=1 mtu=1200
     ! udpsink host={HOST} port={PORT} sync=false async=false qos=false
