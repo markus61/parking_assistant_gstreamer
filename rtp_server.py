@@ -34,41 +34,34 @@ def build_pipeline(args: Any) -> str:
     # Clean up double spaces and newlines for readability
     HOST="192.168.0.2"  # Multicast address
     PORT=5000
-    LEFT="/dev/video31"
-    RIGHT="/dev/video22"
 
-    FRAMES=30
     pipeline_str = f"""
-  compositor name=stitch background=black start-time-selection=zero latency=0
-    sink_0::xpos=0    sink_0::ypos=0 sink_0::width=540 sink_0::height=960
-    sink_1::xpos=540 sink_1::ypos=0 sink_1::width=540 sink_1::height=960
-  ! videorate drop-only=true max-rate={FRAMES}
-  ! video/x-raw,format=NV12,width=1080,height=960,framerate={FRAMES}/1
-  ! queue max-size-buffers=2 max-size-time=33333333 leaky=2
-  ! mpph265enc rc-mode=cbr bps=6000000 bps-min=4000000 bps-max=8000000 gop=15
-  ! h265parse config-interval=-1
-  ! rtph265pay pt=96 config-interval=1 mtu=1460
-  ! udpsink host={HOST} port={PORT} sync=false async=false qos=false
+  v4l2src device=/dev/video31 io-mode=4
+    ! video/x-raw,format=NV12,width=1280,height=720,framerate=10/1
+    ! glupload ! glcolorconvert
+    ! gltransformation ortho=false fov=59 rotation-x=0 rotation-y=0 pivot-x=0
+    ! glvideoflip video-direction=90l
+    ! glcolorscale
+    ! 'video/x-raw(memory:GLMemory),format=(string)RGBA,width=340,height=640,framerate=15/1'
+    ! mix.sink_0
 
-  v4l2src device={LEFT} io-mode=4
-  ! video/x-raw,format=NV12,width=1920,height=1080,framerate={FRAMES}/1
-  ! videoconvert
-  ! video/x-raw,format=RGBA
-  ! gltransformation name=transform_left
-  ! videoconvert
-  ! videoflip method=counterclockwise
-  ! queue max-size-buffers=2 max-size-time=33333333 leaky=2
-  ! stitch.sink_0
+      v4l2src device=/dev/video22 io-mode=4
+    ! video/x-raw,format=NV12,width=1280,height=720,framerate=10/1
+    ! glupload ! glcolorconvert
+    ! gltransformation ortho=false fov=59 rotation-x=0 rotation-y=0  pivot-x=0
+    ! glvideoflip video-direction=90r
+    ! glcolorscale
+    ! 'video/x-raw(memory:GLMemory),format=(string)RGBA,width=340,height=640,framerate=15/1'
+    ! mix.sink_1
 
-  v4l2src device={RIGHT} io-mode=4
-  ! video/x-raw,format=NV12,width=1920,height=1080,framerate={FRAMES}/1
-  ! videoconvert
-  ! video/x-raw,format=RGBA
-  ! gltransformation name=transform_right
-  ! videoconvert
-  ! videoflip method=clockwise
-  ! queue max-size-buffers=2 max-size-time=33333333 leaky=2
-  ! stitch.sink_1
+  glvideomixer name=mix
+    sink_0::xpos=0  sink_0::ypos=0 sink_0::height=640 sink_0::alpha=1.0
+    sink_1::xpos=320 sink_1::ypos=0 sink_1::height=640 sink_1::alpha=1.0
+    ! gldownload
+    ! videoconvert ! 'video/x-raw,format=NV12'
+    ! mpph265enc rc-mode=cbr bps=2000000 gop=15
+    ! rtph265pay pt=96 config-interval=1 mtu=1200
+    ! udpsink host=${HOST} port=${PORT} sync=false async=false qos=false
   """
     return pipeline_str
 
@@ -189,9 +182,6 @@ if __name__ == "__main__":
 
     # Init GStreamer
     Gst.init(None)
-
-
-    # Write SDP
 
     print("Launching pipeline from pipeline string:")
     print("-----------------------------------")
