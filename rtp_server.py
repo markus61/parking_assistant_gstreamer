@@ -52,7 +52,7 @@ glvideomixer name=mix
     sink_0::xpos=0  sink_0::ypos=0 sink_0::height=640 sink_0::alpha=1.0
     sink_1::xpos=340 sink_1::ypos=0 sink_1::height=640 sink_1::alpha=1.0
     ! gldownload
-    ! videoconvert ! 'video/x-raw,format=NV12'
+    ! videoconvert ! 'video/x-raw,format=NV12,framerate=10/1'
     ! mpph265enc rc-mode=cbr bps=2000000 gop=15
     ! rtph265pay pt=96 config-interval=1 mtu=1200
     ! udpsink host={HOST} port={PORT} sync=false async=false qos=false
