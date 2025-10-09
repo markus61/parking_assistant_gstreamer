@@ -94,7 +94,7 @@ class MyMixClass(MxPipe):
     @property
     def sink(self) -> Gst.Element:
         sink = self.element.get_request_pad("sink_%u")
-        sink.set_property("xpos", self.inputs * 1280)
+        sink.set_property("ypos", self.inputs * 720)
         self.inputs = self.inputs + 1
         return sink
 
@@ -159,7 +159,6 @@ def create_pipeline() -> Gst.Pipeline:
     #original.append(xvidsink)
 
     glup = GlUplPipe()
-    f2=Filter("video/x-raw,format=RGBA,width=1280,height=720,framerate=15/1")
     original.append(glup)
     original.append(glcolorconvert)
 
@@ -174,16 +173,6 @@ def create_pipeline() -> Gst.Pipeline:
     original.append(glvidsink)
 
     return original.pipeline
-
-def rest():
-    glcolor = GlColorscale()
-    original.append(glcolor)
-
-    output = Pipeline(mk)
-    xvid = XVidSink()
-    output.append(xvid)
-    print(original.pipeline)
-
 
 def walk_pattern(pipeline: Gst.Pipeline):
     left_eye = pipeline.get_by_name("left_eye")
