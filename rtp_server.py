@@ -37,37 +37,6 @@ def build_pipeline(args: Any) -> str:
     LEFT="/dev/video31"
     RIGHT="/dev/video22"
 
-    FRAMES=30
-    pipeline_str = f"""
-  compositor name=stitch background=black start-time-selection=zero latency=0
-    sink_0::xpos=0    sink_0::ypos=0 sink_0::width=540 sink_0::height=960
-    sink_1::xpos=540 sink_1::ypos=0 sink_1::width=540 sink_1::height=960
-  ! videoconvert
-  ! videorate drop-only=true max-rate={FRAMES}
-  ! video/x-raw,format=NV12,width=1080,height=960,framerate={FRAMES}/1
-  ! queue max-size-buffers=2 max-size-time=33333333 leaky=2
-  ! mpph265enc rc-mode=cbr bps=6000000 bps-min=4000000 bps-max=8000000 gop=15
-  ! h265parse config-interval=-1
-  ! rtph265pay pt=96 config-interval=1 mtu=1460
-  ! udpsink host={HOST} port={PORT} sync=false async=false qos=false
-
-  v4l2src device={LEFT} io-mode=4
-  ! videoconvert
-  ! video/x-raw,format=RGBA,width=1920,height=1080,framerate={FRAMES}/1
-  ! identity name=perspective_left
-  ! videoflip method=counterclockwise
-  ! queue max-size-buffers=2 max-size-time=33333333 leaky=2
-  ! stitch.sink_0
-
-  v4l2src device={RIGHT} io-mode=4
-  ! videoconvert
-  ! video/x-raw,format=RGBA,width=1920,height=1080,framerate={FRAMES}/1
-  ! identity name=perspective_right
-  ! videoflip method=clockwise
-  ! queue max-size-buffers=2 max-size-time=33333333 leaky=2
-  ! stitch.sink_1
-  """
-    return pipeline_str
 
 def on_bus_message(bus, msg, loop, pipeline):
     """Handle GStreamer bus messages."""
@@ -117,7 +86,7 @@ def set_perspective_matrix(pipeline: Gst.Pipeline, element_name: str, matrix: li
 if __name__ == "__main__":
 
     # Init GStreamer
-    Gst.init(None)
+    Gst.init(sys.argv[1:])
 
 
     # Write SDP
