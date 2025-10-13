@@ -9,3 +9,16 @@ always reread this file before you give any answer.
 ## local pipeline
 
 uses videotestsrc as input, displays the output in a window using autovideosink.
+
+## local elements
+
+read local_elements.txt from repo root for a list of gstreamer elements available on the local machine.
+
+## rock 5b pipeline
+
+uses v4l2src as input, uses mpph265enc to encode, streams the output via RTP.
+
+## rock 5b elements
+
+read rock5b_elements.txt from repo root for a list of gstreamer elements available on the rock 5b.
+
