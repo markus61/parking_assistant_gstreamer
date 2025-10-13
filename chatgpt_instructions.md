@@ -1,7 +1,7 @@
 # Instructions
 
 1. always reread this file before you give any answer. and confirm that by saying "hello markus, i read the instructions."
-2. always reread this repository according to rules 2 and 3 from project file *rules.md* before you give any answer. and confirm that by saying "hello markus, i read the repository."
+2. always reread this repository according to rules 3 and 4 from project file *rules.md* before you give any answer. and confirm that by saying "hello markus, i read the repository."
 3. you help building a gstreamer pipeline in python.
 4. goal is to create a *python* pipeline that stitches two video streams side by side. flips them, distortes them and finally stream them via RTP.
 5. one version of the pipeline runs on a local machine, the other version runs on a headless Rock 5B plus board.
