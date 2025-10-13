@@ -50,6 +50,18 @@ class Pipeline():
     @property
     def gst_pipeline(self) -> Gst.Pipeline:
         return self.pipeline
+    
+    def walk_pattern(self, name:str) -> bool:
+        element = self.pipeline.get_by_name(name)
+        pattern = int(element.props.pattern)
+        pattern = pattern + 1
+        if pattern == 23:
+            # Send EOS to stop the pipeline gracefully
+            self.pipeline.send_event(Gst.Event.new_eos())
+            return None
+        element.set_property("pattern", pattern)
+        print(f"Pattern {pattern}")
+        return pattern
 
     def append(self, element: GstElement):
         self.pipeline.add(element.element)
@@ -173,19 +185,4 @@ def create_pipeline() -> Gst.Pipeline:
     original.append(glvidsink)
 
     return original.pipeline
-
-def walk_pattern(pipeline: Gst.Pipeline):
-    left_eye = pipeline.get_by_name("left_eye")
-    right_eye = pipeline.get_by_name("right_eye")
-    pattern = int(left_eye.props.pattern)
-    pattern = pattern + 1
-    if pattern == 23:
-        # Send EOS to stop the pipeline gracefully
-        pipeline.send_event(Gst.Event.new_eos())
-        return False
-    left_eye.set_property("pattern", pattern)
-    right_eye.set_property("pattern", pattern)
-    print(f"Pattern {pattern}")
-    return True
-
 
