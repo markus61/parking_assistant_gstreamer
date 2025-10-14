@@ -41,8 +41,9 @@ def create_pipeline() -> Gst.Pipeline:
 
     tee = g.Tee()
     original.append(tee)
-    mk = g.MyMixClass()
+    mk = g.MxPipe()
     original.append(mk)
+    mk.this_sink.set_property("ypos", 720)
 
     distorted = tee.leg()
     distorted.append(mk)

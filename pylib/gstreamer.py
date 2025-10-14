@@ -88,10 +88,31 @@ class MxPipe(GstElement):
 
     def __init__(self, name: str = None):
         super().__init__("glvideomixer", name)
+        self.sinks = 0
+        self.this_sink = None
 
     @property
     def sink(self) -> Gst.Element:
-        return self.element.get_request_pad("sink_%u")
+        _sink = self.element.get_request_pad("sink_%u")
+        if _sink:
+            self.this_sink = _sink
+            # Get the full pad name (e.g., "sink_0", "sink_1", etc.)
+            full_name = _sink.get_name()
+            print(f"Full requested pad name: {full_name}")
+
+            # Extract the integer index by splitting the string
+            try:
+                # Split the string "sink_N" by the underscore and take the second part
+                index_str = full_name.split('_')[-1]
+                self.sinks = int(index_str)
+                
+                print(f"Extracted unique index (%u): {self.sinks}")
+            
+            except ValueError:
+                print(f"Error: Could not parse index from pad name: {full_name}")
+            return _sink
+        else:
+            print("Error: Could not get a request pad.")
 
     @property
     def src(self) -> Gst.Pad:
@@ -107,24 +128,6 @@ class Camera(GstElement):
     @property
     def sink(self) -> None:
         return None
-
-
-class MyMixClass(MxPipe):
-
-    def __init__(self, name: str = None):
-        super().__init__(name)
-        self.inputs = 0
-
-    @property
-    def sink(self) -> Gst.Element:
-        sink = self.element.get_request_pad("sink_%u")
-        sink.set_property("ypos", self.inputs * 720)
-        self.inputs = self.inputs + 1
-        return sink
-
-    @property
-    def src(self) -> Gst.Pad:
-        return self.element.get_static_pad("src")
 
 class Filter(GstElement):
     def __init__(self, filter_str: str, name: str = None):
