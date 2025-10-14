@@ -201,6 +201,14 @@ class GlVidSink(GstElement):
     def __init__(self, name: str = None):
         super().__init__("glimagesinkelement", name)
 
+class Rock265Enc(GstElement):
+    def __init__(self, name: str = None):
+        super().__init__("mpph265enc", name)
+        if not self.element:
+            logger.error("Failed to create mpph265enc. Ensure GStreamer with GL support is installed.")
+            raise RuntimeError("mpph265enc creation failed")
+
+
 class GlShaderRotate90(GstElement):
     """
     OpenGL shader that rotates video 90 degrees clockwise in GPU memory.

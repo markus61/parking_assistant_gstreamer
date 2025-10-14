@@ -6,6 +6,17 @@ from gi.repository import Gst # type: ignore
 from . import gstreamer as g
 
 def create_pipeline() -> Gst.Pipeline:
+    MACHINE = "rock"  # or "aarch64"
+    DEV = False
+    try:
+        rock265enc = g.Rock265Enc("rock265enc")
+    except RuntimeError as e:
+        if str(e) == "mpph265enc creation failed":
+            MACHINE = "develop"
+            DEV = True
+        else:
+            raise e
+
     xvidsink = g.XVidSink()
     glvidsink = g.GlVidSink()
     # Disable aspect ratio forcing to fill the window without black bars
