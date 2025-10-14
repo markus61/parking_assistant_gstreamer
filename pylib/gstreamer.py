@@ -122,8 +122,6 @@ class Camera(GstElement):
 
     def __init__(self, name: str = None):
         super().__init__("v4l2src", name)
-        self.element.set_property("device", "/dev/video1")
-        self.element.set_property("io-mode", 2)  # 0:MMAP, 1:USERPTR, 2:DMA-BUF
 
     @property
     def sink(self) -> None:
@@ -202,8 +200,6 @@ class XVidSink(GstElement):
 class GlVidSink(GstElement):
     def __init__(self, name: str = None):
         super().__init__("glimagesinkelement", name)
-        # Disable aspect ratio forcing to fill the window without black bars
-        self.element.set_property("force-aspect-ratio", False)
 
 class GlShaderRotate90(GstElement):
     """

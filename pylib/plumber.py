@@ -8,12 +8,17 @@ from . import gstreamer as g
 def create_pipeline() -> Gst.Pipeline:
     xvidsink = g.XVidSink()
     glvidsink = g.GlVidSink()
+    # Disable aspect ratio forcing to fill the window without black bars
+    glvidsink.element.set_property("force-aspect-ratio", False)
+
     glcolorconvert = g.GlColorConvert()
 
     original = g.Pipeline()
     #left_eye = EyePipe("left_eye")
     left_eye = g.Camera("left_eye")
     original.append(left_eye)
+    left_eye.element.set_property("device", "/dev/video1")
+    left_eye.element.set_property("io-mode", 2)  # 0:MMAP, 1:USERPTR, 2:DMA-BUF
 
     # Request MJPEG from camera for 30fps
     cam_caps = g.Filter("image/jpeg,width=1280,height=720,framerate=10/1", name="cam caps")
@@ -30,10 +35,6 @@ def create_pipeline() -> Gst.Pipeline:
     glup = g.GlUplPipe()
     original.append(glup)
     original.append(glcolorconvert)
-
-    # Force RGBA format with correct dimensions before tee
-    force_RGBA = g.Filter("video/x-raw(memory:GLMemory),format=RGBA,width=1280,height=720", name="force_RGBA")
-    original.append(force_RGBA)
 
     # DEBUG: Check dimensions after color convert
     debug2 = g.Identity("debug_2: after_glcolorconvert expected=1280x720 RGBA").enable_caps_logging()
