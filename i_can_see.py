@@ -23,8 +23,20 @@ pipeline = create_pipeline()
 ret = pipeline.set_state(Gst.State.PLAYING)
 if ret == Gst.StateChangeReturn.FAILURE:
     logger.error("Unable to set the pipeline to playing state.")
+    # Wait for error message from bus before exiting
+    bus = pipeline.get_bus()
+    msg = bus.timed_pop_filtered(Gst.CLOCK_TIME_NONE, Gst.MessageType.ERROR)
+    if msg:
+        err, debug_info = msg.parse_error()
+        logger.error(f"Error: {err.message}")
+        logger.error(f"Debug: {debug_info if debug_info else 'none'}")
     sys.exit(1)
-
+elif ret == Gst.StateChangeReturn.NO_PREROLL:
+    logger.info("Pipeline is live and does not need preroll.")
+elif ret == Gst.StateChangeReturn.ASYNC:
+    logger.info("Pipeline state change is happening asynchronously.")
+else:
+    logger.info("Pipeline set to PLAYING state successfully.")
 # Wait for EOS or error using a main loop
 def on_message(bus, message, loop):
     if message.type == Gst.MessageType.ERROR:

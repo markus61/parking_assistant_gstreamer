@@ -30,9 +30,11 @@ def create_pipeline() -> Gst.Pipeline:
         stream_sink.element.set_property("host", "192.168.0.2")
         stream_sink.element.set_property("port", 5000)
         stream_sink.element.set_property("sync", False)
+        stream_sink.element.set_property("async", False)
+        stream_sink.element.set_property("qos", False)
         # camera props
-        left_eye.element.set_property("device", "/dev/video22")
-        left_eye.element.set_property("io-mode", 4)  # 0:MMAP, 1:USERPTR, 2:DMA-BUF
+        left_eye.element.set_property("device", "/dev/video31")
+        left_eye.element.set_property("io-mode", 4)  # 0:MMAP, 1:USERPTR, 2:DMA-BUF, 4:DMABUF-IMPORT
 
 
     glcolorconvert = g.GlColorConvert()
@@ -40,13 +42,16 @@ def create_pipeline() -> Gst.Pipeline:
     original = g.Pipeline()
     original.append(left_eye)
 
-    # Request MJPEG from camera for 30fps
-    cam_caps = g.Filter("image/jpeg,width=1280,height=720,framerate=10/1", name="cam caps")
-    original.append(cam_caps)
-
-    # Decode MJPEG to raw video
-    jpegdec = g.JpegDec("jpegdec")
-    original.append(jpegdec)
+    # Camera caps: DEV uses MJPEG, Rock uses raw NV12
+    if DEV:
+        cam_caps = g.Filter("image/jpeg,width=1280,height=720,framerate=10/1", name="cam caps")
+        original.append(cam_caps)
+        # Decode MJPEG to raw video
+        jpegdec = g.JpegDec("jpegdec")
+        original.append(jpegdec)
+    else:
+        cam_caps = g.Filter("video/x-raw,format=NV12,width=1280,height=720,framerate=15/1", name="cam caps")
+        original.append(cam_caps)
 
     # DEBUG: Check dimensions after decode
     debug1 = g.Identity("debug_1: after_jpegdec expected=1280x720").enable_caps_logging()
@@ -89,6 +94,33 @@ def create_pipeline() -> Gst.Pipeline:
     # DEBUG: Check dimensions after rotation
     debug4 = g.Identity("debug_4: after_rotation expected=1440x1280").enable_caps_logging()
     original.append(debug4)
+
+    # For Rock: add encoder chain before sink
+    if not DEV:
+        # Download from GL memory to system memory
+        gldownload = g.GlDownload()
+        original.append(gldownload)
+
+        # Convert to NV12 for encoder
+        videoconvert = g.VideoConvert()
+        original.append(videoconvert)
+
+        nv12_caps = g.Filter("video/x-raw,format=NV12", name="encoder caps")
+        original.append(nv12_caps)
+
+        # Hardware encoder
+        encoder = g.Rock265Enc("encoder")
+        encoder.element.set_property("rc-mode", "cbr")
+        encoder.element.set_property("bps", 2000000)
+        encoder.element.set_property("gop", 15)
+        original.append(encoder)
+
+        # RTP payloader
+        rtppay = g.RtpH265Pay("rtppay")
+        rtppay.element.set_property("pt", 96)
+        rtppay.element.set_property("config-interval", 1)
+        rtppay.element.set_property("mtu", 1200)
+        original.append(rtppay)
 
     original.append(stream_sink)
 

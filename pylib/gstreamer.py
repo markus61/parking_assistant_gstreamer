@@ -1,4 +1,5 @@
 import sys
+import os
 import gi
 import logging
 
@@ -15,6 +16,7 @@ logger = logging.getLogger(__name__)
 Gst.init(sys.argv[1:])
 
 class GstElement():
+    """Base wrapper for GStreamer elements. Provides name, src/sink pads, and linking."""
     def __init__(self, element: str, name: str):
         self.element = Gst.ElementFactory.make(element, name)
         self._name = self.element.get_name() if self.element else ""
@@ -36,6 +38,10 @@ class GstElement():
 
 
 class Pipeline():
+    """
+    GStreamer pipeline wrapper with automatic element linking.
+    Use append() to add elements sequentially.
+    """
     def __init__(self, element: GstElement = None, name: str = None ):
         self.tail = None
         if element and element.pipeline:
@@ -84,8 +90,23 @@ class Pipeline():
         self.tail = element
         return self
 
-class MxPipe(GstElement):
+    def cleanup(self):
+        """Sets the pipeline to NULL state to stop it and free resources."""
+        if self.pipeline:
+            print("Stopping pipeline and releasing resources...")
+            
+            # 1. Set the state to NULL
+            # This is the equivalent of "removing" the pipeline.
+            self.pipeline.set_state(Gst.State.NULL)
+            
+            print("Pipeline stopped.")
 
+class MxPipe(GstElement):
+    """
+    GL video mixer with multiple inputs. Compositor for OpenGL memory.
+    Position inputs using sink pad properties: this_sink.set_property("xpos", x)
+    Requires video/x-raw(memory:GLMemory) input format.
+    """
     def __init__(self, name: str = None):
         super().__init__("glvideomixer", name)
         self.sinks = 0
@@ -119,7 +140,11 @@ class MxPipe(GstElement):
         return self.element.get_static_pad("src")
 
 class Camera(GstElement):
-
+    """
+    V4L2 camera source. No sink pad (source element only).
+    Set device: element.set_property("device", "/dev/video0")
+    Set io-mode: element.set_property("io-mode", 4)  # DMABUF export
+    """
     def __init__(self, name: str = None):
         super().__init__("v4l2src", name)
 
@@ -128,33 +153,65 @@ class Camera(GstElement):
         return None
 
 class Filter(GstElement):
+    """
+    Caps filter - enforces media format constraints.
+    Pass format string in constructor: Filter("video/x-raw,width=1280,height=720")
+    """
     def __init__(self, filter_str: str, name: str = None):
         super().__init__("capsfilter", name)
         caps = Gst.Caps.from_string(filter_str)
         self.element.set_property("caps", caps)
 
 class GlColorConvert(GstElement):
+    """
+    Converts between color formats in OpenGL memory.
+    Automatically negotiates format based on neighbor caps.
+    Requires video/x-raw(memory:GLMemory) input.
+    """
     def __init__(self, name: str = None):
         super().__init__("glcolorconvert", name)
 
 class GlColorscale(GstElement):
+    """
+    Scales video in OpenGL memory.
+    Use with capsfilter to set target dimensions.
+    Requires video/x-raw(memory:GLMemory) input.
+    """
     def __init__(self, name: str = None):
         super().__init__("glcolorscale", name)
 
 class JpegDec(GstElement):
+    """
+    JPEG decoder. Converts image/jpeg to video/x-raw.
+    Commonly used after MJPEG camera sources.
+    """
     def __init__(self, name: str = None):
         super().__init__("jpegdec", name)
 
 class EyePipe(GstElement):
+    """
+    Test video source with patterns. No sink pad (source element only).
+    Set pattern: element.set_property("pattern", 0)  # 0-25 different patterns
+    """
     def __init__(self, name: str = None):
         name = "eye" if not name else name
         super().__init__("videotestsrc", name)    
       
 class GlUplPipe(GstElement):
+    """
+    Uploads video to OpenGL memory.
+    Place after CPU elements, before GL processing elements.
+    Converts video/x-raw to video/x-raw(memory:GLMemory).
+    """
     def __init__(self, name: str = None):
         super().__init__("glupload", name)
 
 class Tee(GstElement):
+    """
+    Splits pipeline into multiple branches.
+    Use leg() to create new branch: branch = tee.leg()
+    Each leg shares the same pipeline and can be appended independently.
+    """
     def __init__(self, name: str = None):
         super().__init__("tee", name)
 
@@ -169,8 +226,9 @@ class Tee(GstElement):
 
 class Identity(GstElement):
     """
-    Debug element that passes data through and can print caps/timestamps.
-    Use to inspect video dimensions at any point in the pipeline.
+    Debug element - passes data unchanged.
+    Call enable_caps_logging() to print format/dimensions during playback.
+    Use descriptive names for identifying pipeline locations.
     """
     def __init__(self, name: str = None):
         super().__init__("identity", name)
@@ -194,18 +252,39 @@ class Identity(GstElement):
         return self
 
 class XVidSink(GstElement):
+    """
+    X11 display sink using XImage.
+    Accepts video/x-raw in system memory.
+    Set force-aspect-ratio: element.set_property("force-aspect-ratio", False)
+    """
     def __init__(self, name: str = None):
         super().__init__("ximagesink", name)
 
 class GlVidSink(GstElement):
+    """
+    OpenGL display sink.
+    Accepts video/x-raw(memory:GLMemory) for zero-copy display.
+    Set force-aspect-ratio: element.set_property("force-aspect-ratio", False)
+    """
     def __init__(self, name: str = None):
         super().__init__("glimagesinkelement", name)
 
 class UDPSink(GstElement):
+    """
+    UDP network sink for streaming.
+    Set host: element.set_property("host", "192.168.0.2")
+    Set port: element.set_property("port", 5000)
+    Set sync: element.set_property("sync", False)  # For live streaming
+    """
     def __init__(self, name: str = None):
         super().__init__("udpsink", name)
 
 class Rock265Enc(GstElement):
+    """
+    Rockchip hardware H.265 encoder (mpph265enc).
+    Efficient encoding on RK3588 devices.
+    Raises RuntimeError if hardware encoder unavailable.
+    """
     def __init__(self, name: str = None):
         super().__init__("mpph265enc", name)
         if not self.element:
@@ -215,8 +294,10 @@ class Rock265Enc(GstElement):
 
 class GlShaderRotate90(GstElement):
     """
-    OpenGL shader that rotates video 90 degrees clockwise in GPU memory.
-    Stays entirely in GL memory for maximum performance.
+    Custom GL shader for 90-degree rotation in GPU memory.
+    Pass clockwise=True/False in constructor.
+    Swaps width/height - follow with capsfilter for rotated dimensions.
+    Requires video/x-raw(memory:GLMemory) input.
     """
     def __init__(self, clockwise: bool = True, name: str = None):
         super().__init__("glshader", name)
@@ -255,3 +336,31 @@ void main () {
 }
 """
         self.element.set_property("fragment", fragment_shader)
+
+class GlDownload(GstElement):
+    """
+    Downloads video from OpenGL memory to system memory.
+    Place before CPU elements that need video/x-raw in system memory.
+    Converts video/x-raw(memory:GLMemory) to video/x-raw.
+    """
+    def __init__(self, name: str = None):
+        super().__init__("gldownload", name)
+
+class VideoConvert(GstElement):
+    """
+    Converts between video color spaces and formats in system memory.
+    Automatically negotiates format. Use with capsfilter to force specific format.
+    Essential between elements with incompatible formats.
+    """
+    def __init__(self, name: str = None):
+        super().__init__("videoconvert", name)
+
+class RtpH265Pay(GstElement):
+    """
+    RTP payloader for H.265/HEVC streams.
+    Set pt: element.set_property("pt", 96)
+    Set config-interval: element.set_property("config-interval", 1)  # Send SPS/PPS
+    Set mtu: element.set_property("mtu", 1200)
+    """
+    def __init__(self, name: str = None):
+        super().__init__("rtph265pay", name)
