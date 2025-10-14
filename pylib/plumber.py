@@ -33,7 +33,7 @@ def create_pipeline() -> Gst.Pipeline:
         stream_sink.element.set_property("async", False)
         stream_sink.element.set_property("qos", False)
         # camera props
-        left_eye.element.set_property("device", "/dev/video31")
+        left_eye.element.set_property("device", "/dev/video22")
         left_eye.element.set_property("io-mode", 4)  # 0:MMAP, 1:USERPTR, 2:DMA-BUF, 4:DMABUF-IMPORT
 
 
