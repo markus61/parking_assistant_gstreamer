@@ -48,7 +48,7 @@ def create_pipeline() -> Gst.Pipeline:
 
     glup = g.GlUplPipe()
     original.append(glup)
-    original.append(glcolorconvert)
+    #original.append(glcolorconvert)
 
     # DEBUG: Check dimensions after color convert
     debug2 = g.Identity("debug_2: after_glcolorconvert expected=1280x720 RGBA").enable_caps_logging()
