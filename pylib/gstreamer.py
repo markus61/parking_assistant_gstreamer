@@ -315,23 +315,12 @@ class GlShaderRotate90(GstElement):
         # Fragment shader for rotation
         if clockwise:
             # 90° clockwise: (x,y) -> (1-y, x)
-            fragment_shader = """
-#version 100
-#ifdef GL_ES
-precision mediump float;
-#endif
-varying vec2 v_texcoord;
-uniform sampler2D tex;
-
-void main () {
-    // Rotate 90 degrees clockwise
-    vec2 rotated_coord = vec2(1.0 - v_texcoord.y, v_texcoord.x);
-    gl_FragColor = texture2D(tex, rotated_coord);
-}
-"""
+            transform = "1.0 - v_texcoord.y, v_texcoord.x"
         else:
             # 90° counter-clockwise: (x,y) -> (y, 1-x)
-            fragment_shader = """
+            transform = "v_texcoord.y, 1.0 - v_texcoord.x"
+
+        fragment_shader = f"""
 #version 100
 #ifdef GL_ES
 precision mediump float;
@@ -339,11 +328,10 @@ precision mediump float;
 varying vec2 v_texcoord;
 uniform sampler2D tex;
 
-void main () {
-    // Rotate 90 degrees counter-clockwise
-    vec2 rotated_coord = vec2(v_texcoord.y, 1.0 - v_texcoord.x);
+void main () {{
+    vec2 rotated_coord = vec2({transform});
     gl_FragColor = texture2D(tex, rotated_coord);
-}
+}}
 """
         self.element.set_property("fragment", fragment_shader)
 

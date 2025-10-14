@@ -16,7 +16,7 @@ def create_pipeline() -> Gst.Pipeline:
             DEV = True
         else:
             raise e
-
+    print(f"Machine type detected: {MACHINE}, DEV={DEV}")
 
     glcolorconvert = g.GlColorConvert()
 
@@ -97,11 +97,7 @@ def create_pipeline() -> Gst.Pipeline:
     original.append(debug4)
 
     if DEV:
-        #stream_sink = g.GlVidSink()
-        jpegenc = g.JpegEnc()
-        original.append(jpegenc)
-        stream_sink = g.FileSink()
-        stream_sink.element.set_property("location", "/home/markus/Pictures/Screenshots/local.jpeg")
+        stream_sink = g.GlVidSink()
         original.append(stream_sink)
     else:
         # For Rock: add encoder chain before sink
@@ -116,12 +112,11 @@ def create_pipeline() -> Gst.Pipeline:
         nv12_caps = g.Filter("video/x-raw,format=NV12", name="encoder caps")
         original.append(nv12_caps)
 
-        # Hardware encoder
-        encoder = g.Rock265Enc("encoder")
-        encoder.element.set_property("rc-mode", "cbr")
-        encoder.element.set_property("bps", 2000000)
-        encoder.element.set_property("gop", 15)
-        original.append(encoder)
+        # Hardware encoder reuse from above
+        rock265enc.element.set_property("rc-mode", "cbr")
+        rock265enc.element.set_property("bps", 2000000)
+        rock265enc.element.set_property("gop", 15)
+        original.append(rock265enc)
 
         # RTP payloader
         rtppay = g.RtpH265Pay("rtppay")
