@@ -98,6 +98,8 @@ def create_pipeline() -> Gst.Pipeline:
 
     if DEV:
         #stream_sink = g.GlVidSink()
+        jpegenc = g.JpegEnc()
+        original.append(jpegenc)
         stream_sink = g.FileSink()
         stream_sink.element.set_property("location", "/home/markus/Pictures/Screenshots/local.jpeg")
         original.append(stream_sink)

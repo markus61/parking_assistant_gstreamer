@@ -179,6 +179,13 @@ class GlColorscale(GstElement):
     def __init__(self, name: str = None):
         super().__init__("glcolorscale", name)
 
+class JpegEnc(GstElement):
+    """
+    JPEG encoder. Converts video/x-raw to image/jpeg.
+    """
+    def __init__(self, name: str = None):
+        super().__init__("jpegenc", name)
+
 class JpegDec(GstElement):
     """
     JPEG decoder. Converts image/jpeg to video/x-raw.
