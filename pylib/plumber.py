@@ -83,7 +83,7 @@ def create_pipeline() -> Gst.Pipeline:
     original.append(debug3)
 
     # Add rotation shader between mixer and sink (stays in GL memory)
-    rotate_shader = g.GlShaderRotate90(clockwise=False, name="rotate90")
+    rotate_shader = g.GlShaderRotate90(clockwise=True, name="rotate90")
     original.append(rotate_shader)
 
     # After rotation, dimensions are swapped: 1280x1440 → 1440x1280
