@@ -20,8 +20,6 @@ def create_pipeline() -> Gst.Pipeline:
     left_eye = g.Camera("left_eye")
     if DEV:
         stream_sink = g.GlVidSink()
-        # Disable aspect ratio forcing to fill the window without black bars
-        stream_sink.element.set_property("force-aspect-ratio", False)
         # camera props
         left_eye.element.set_property("device", "/dev/video1")
         left_eye.element.set_property("io-mode", 2)  # 0:MMAP, 1:USERPTR, 2:DMA-BUF
