@@ -268,6 +268,10 @@ class GlVidSink(GstElement):
     def __init__(self, name: str = None):
         super().__init__("glimagesinkelement", name)
 
+class FileSink(GstElement):
+    def __init__(self, name: str = None):
+        super().__init__("filesink", name)
+
 class UDPSink(GstElement):
     """
     UDP network sink for streaming.

@@ -17,37 +17,28 @@ def create_pipeline() -> Gst.Pipeline:
         else:
             raise e
 
-    left_eye = g.Camera("left_eye")
-    if DEV:
-        stream_sink = g.GlVidSink()
-        # camera props
-        left_eye.element.set_property("device", "/dev/video1")
-        left_eye.element.set_property("io-mode", 2)  # 0:MMAP, 1:USERPTR, 2:DMA-BUF
-    else:
-        stream_sink = g.UDPSink()
-        stream_sink.element.set_property("host", "192.168.0.2")
-        stream_sink.element.set_property("port", 5000)
-        stream_sink.element.set_property("sync", False)
-        stream_sink.element.set_property("async", False)
-        stream_sink.element.set_property("qos", False)
-        # camera props
-        left_eye.element.set_property("device", "/dev/video31")
-        left_eye.element.set_property("io-mode", 4)  # 0:MMAP, 1:USERPTR, 2:DMA-BUF, 4:DMABUF-IMPORT
-
 
     glcolorconvert = g.GlColorConvert()
 
     original = g.Pipeline()
-    original.append(left_eye)
+    left_eye = g.Camera("left_eye")
 
+    # camera props
     # Camera caps: DEV uses MJPEG, Rock uses raw NV12
     if DEV:
+        left_eye.element.set_property("device", "/dev/video1")
+        left_eye.element.set_property("io-mode", 2)  # 0:MMAP, 1:USERPTR, 2:DMA-BUF
+        original.append(left_eye)
         cam_caps = g.Filter("image/jpeg,width=1280,height=720,framerate=10/1", name="cam caps")
         original.append(cam_caps)
-        # Decode MJPEG to raw video
+        # Decode MJPEG to raw video only in DEV mode
         jpegdec = g.JpegDec("jpegdec")
         original.append(jpegdec)
     else:
+        # camera props
+        left_eye.element.set_property("device", "/dev/video31")
+        left_eye.element.set_property("io-mode", 4)  # 0:MMAP, 1:USERPTR, 2:DMA-BUF, 4:DMABUF-IMPORT
+        original.append(left_eye)
         cam_caps = g.Filter("video/x-raw,format=NV12,width=1280,height=720,framerate=15/1", name="cam caps")
         original.append(cam_caps)
 
@@ -105,8 +96,13 @@ def create_pipeline() -> Gst.Pipeline:
     debug4 = g.Identity("debug_4: after_rotation expected=1440x1280").enable_caps_logging()
     original.append(debug4)
 
-    # For Rock: add encoder chain before sink
-    if not DEV:
+    if DEV:
+        #stream_sink = g.GlVidSink()
+        stream_sink = g.FileSink()
+        stream_sink.element.set_property("location", "/home/markus/Pictures/Screenshots/local.jpeg")
+        original.append(stream_sink)
+    else:
+        # For Rock: add encoder chain before sink
         # Download from GL memory to system memory
         gldownload = g.GlDownload()
         original.append(gldownload)
@@ -132,7 +128,13 @@ def create_pipeline() -> Gst.Pipeline:
         rtppay.element.set_property("mtu", 1200)
         original.append(rtppay)
 
-    original.append(stream_sink)
+        stream_sink = g.UDPSink()
+        stream_sink.element.set_property("host", "192.168.0.2")
+        stream_sink.element.set_property("port", 5000)
+        stream_sink.element.set_property("sync", False)
+        stream_sink.element.set_property("async", False)
+        stream_sink.element.set_property("qos", False)
+        original.append(stream_sink)
 
     return original.pipeline
 
