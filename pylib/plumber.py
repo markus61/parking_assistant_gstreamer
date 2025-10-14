@@ -17,25 +17,28 @@ def create_pipeline() -> Gst.Pipeline:
         else:
             raise e
 
+    left_eye = g.Camera("left_eye")
     if DEV:
         stream_sink = g.GlVidSink()
         # Disable aspect ratio forcing to fill the window without black bars
         stream_sink.element.set_property("force-aspect-ratio", False)
+        # camera props
+        left_eye.element.set_property("device", "/dev/video1")
+        left_eye.element.set_property("io-mode", 2)  # 0:MMAP, 1:USERPTR, 2:DMA-BUF
     else:
         stream_sink = g.UDPSink()
         stream_sink.element.set_property("host", "192.168.0.2")
         stream_sink.element.set_property("port", 5000)
         stream_sink.element.set_property("sync", False)
+        # camera props
+        left_eye.element.set_property("device", "/dev/video22")
+        left_eye.element.set_property("io-mode", 4)  # 0:MMAP, 1:USERPTR, 2:DMA-BUF
 
 
     glcolorconvert = g.GlColorConvert()
 
     original = g.Pipeline()
-    #left_eye = EyePipe("left_eye")
-    left_eye = g.Camera("left_eye")
     original.append(left_eye)
-    left_eye.element.set_property("device", "/dev/video1")
-    left_eye.element.set_property("io-mode", 2)  # 0:MMAP, 1:USERPTR, 2:DMA-BUF
 
     # Request MJPEG from camera for 30fps
     cam_caps = g.Filter("image/jpeg,width=1280,height=720,framerate=10/1", name="cam caps")
