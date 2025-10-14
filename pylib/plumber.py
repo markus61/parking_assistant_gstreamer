@@ -48,7 +48,7 @@ def create_pipeline() -> Gst.Pipeline:
 
     glup = g.GlUplPipe()
     original.append(glup)
-    #original.append(glcolorconvert)
+    original.append(glcolorconvert)
 
     # DEBUG: Check dimensions after color convert
     debug2 = g.Identity("debug_2: after_glcolorconvert expected=1280x720 RGBA").enable_caps_logging()
@@ -61,19 +61,12 @@ def create_pipeline() -> Gst.Pipeline:
     
     mk = g.MxPipe()
     original.append(mk)
-    mk.this_sink.set_property("xpos", 0)
-    mk.this_sink.set_property("ypos", 0)
-    mk.this_sink.set_property("width", 1280)
-    mk.this_sink.set_property("height", 720)
 
     distorted = tee.leg()
     debug_mixer_in_1 = g.Identity("debug: mixer_input_1").enable_caps_logging()
     distorted.append(debug_mixer_in_1)
     distorted.append(mk)
-    mk.this_sink.set_property("xpos", 0)
     mk.this_sink.set_property("ypos", 720)
-    mk.this_sink.set_property("width", 1280)
-    mk.this_sink.set_property("height", 720)
 
     # Force correct mixer output dimensions (2x 1280x720 stacked = 1280x1440)
     mixer_output_caps = g.Filter("video/x-raw(memory:GLMemory),format=RGBA,width=1280,height=1440", name="mixer caps")
