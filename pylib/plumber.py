@@ -63,14 +63,15 @@ def create_pipeline() -> Gst.Pipeline:
     original.append(mk)
 
     distorted = tee.leg()
+    # this is where keystone correction should go
     debug_mixer_in_1 = g.Identity("debug: mixer_input_1").enable_caps_logging()
     distorted.append(debug_mixer_in_1)
     distorted.append(mk)
     mk.this_sink.set_property("ypos", 720)
 
     # Force correct mixer output dimensions (2x 1280x720 stacked = 1280x1440)
-    mixer_output_caps = g.Filter("video/x-raw(memory:GLMemory),format=RGBA,width=1280,height=1440", name="mixer caps")
-    original.append(mixer_output_caps)
+    #mixer_output_caps = g.Filter("video/x-raw(memory:GLMemory),format=RGBA,width=1280,height=1440", name="mixer caps")
+    #original.append(mixer_output_caps)
 
     # DEBUG: Check dimensions after mixer
     debug3 = g.Identity("debug_3: after_mixer expected=1280x1440").enable_caps_logging()
