@@ -17,10 +17,17 @@ def create_pipeline() -> Gst.Pipeline:
         else:
             raise e
 
-    xvidsink = g.XVidSink()
-    glvidsink = g.GlVidSink()
+    if DEV:
+        stream_sink = g.GlVidSink()
+    else:
+        stream_sink = g.UDPSink()
+        stream_sink.element.set_property("host", "192.168.0.2")
+        stream_sink.element.set_property("port", 5000)
+        stream_sink.element.set_property("sync", False)
+
+
     # Disable aspect ratio forcing to fill the window without black bars
-    glvidsink.element.set_property("force-aspect-ratio", False)
+    stream_sink.element.set_property("force-aspect-ratio", False)
 
     glcolorconvert = g.GlColorConvert()
 
@@ -81,7 +88,7 @@ def create_pipeline() -> Gst.Pipeline:
     debug4 = g.Identity("debug_4: after_rotation expected=1440x1280").enable_caps_logging()
     original.append(debug4)
 
-    original.append(glvidsink)
+    original.append(stream_sink)
 
     return original.pipeline
 

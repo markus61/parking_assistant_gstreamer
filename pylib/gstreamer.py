@@ -201,6 +201,10 @@ class GlVidSink(GstElement):
     def __init__(self, name: str = None):
         super().__init__("glimagesinkelement", name)
 
+class UDPSink(GstElement):
+    def __init__(self, name: str = None):
+        super().__init__("udpsink", name)
+
 class Rock265Enc(GstElement):
     def __init__(self, name: str = None):
         super().__init__("mpph265enc", name)
