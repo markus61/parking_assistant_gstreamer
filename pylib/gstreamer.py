@@ -97,6 +97,18 @@ class MxPipe(GstElement):
     def src(self) -> Gst.Pad:
         return self.element.get_static_pad("src")
 
+class Camera(GstElement):
+
+    def __init__(self, name: str = None):
+        super().__init__("v4l2src", name)
+        self.element.set_property("device", "/dev/video1")
+        self.element.set_property("io-mode", 2)  # 0:MMAP, 1:USERPTR, 2:DMA-BUF
+
+    @property
+    def sink(self) -> None:
+        return None
+
+
 class MyMixClass(MxPipe):
 
     def __init__(self, name: str = None):
@@ -128,6 +140,10 @@ class GlColorscale(GstElement):
     def __init__(self, name: str = None):
         super().__init__("glcolorscale", name)
 
+class JpegDec(GstElement):
+    def __init__(self, name: str = None):
+        super().__init__("jpegdec", name)
+
 class EyePipe(GstElement):
     def __init__(self, name: str = None):
         name = "eye" if not name else name
@@ -150,6 +166,32 @@ class Tee(GstElement):
         leg = Pipeline(self)
         return leg
 
+class Identity(GstElement):
+    """
+    Debug element that passes data through and can print caps/timestamps.
+    Use to inspect video dimensions at any point in the pipeline.
+    """
+    def __init__(self, name: str = None):
+        super().__init__("identity", name)
+        # Enable silent mode by default, prints can be enabled per instance
+        self.element.set_property("silent", True)
+
+    def enable_caps_logging(self):
+        """Print caps (including width/height) when they change"""
+        self.element.set_property("silent", False)
+        self.element.set_property("signal-handoffs", True)
+        # Connect to handoff signal to print caps
+        def on_handoff(identity, _buffer):
+            pad = identity.get_static_pad("src")
+            caps = pad.get_current_caps()
+            if caps:
+                structure = caps.get_structure(0)
+                width = structure.get_int("width")[1] if structure.has_field("width") else "?"
+                height = structure.get_int("height")[1] if structure.has_field("height") else "?"
+                logger.info(f"[{identity.get_name()}] Dimensions: {width}x{height}, Full caps: {caps.to_string()}")
+        self.element.connect("handoff", on_handoff)
+        return self
+
 class XVidSink(GstElement):
     def __init__(self, name: str = None):
         super().__init__("ximagesink", name)
@@ -157,6 +199,51 @@ class XVidSink(GstElement):
 class GlVidSink(GstElement):
     def __init__(self, name: str = None):
         super().__init__("glimagesinkelement", name)
+        # Disable aspect ratio forcing to fill the window without black bars
+        self.element.set_property("force-aspect-ratio", False)
+
+class GlShaderRotate90(GstElement):
+    """
+    OpenGL shader that rotates video 90 degrees clockwise in GPU memory.
+    Stays entirely in GL memory for maximum performance.
+    """
+    def __init__(self, clockwise: bool = True, name: str = None):
+        super().__init__("glshader", name)
+
+        # Fragment shader for rotation
+        if clockwise:
+            # 90° clockwise: (x,y) -> (1-y, x)
+            fragment_shader = """
+#version 100
+#ifdef GL_ES
+precision mediump float;
+#endif
+varying vec2 v_texcoord;
+uniform sampler2D tex;
+
+void main () {
+    // Rotate 90 degrees clockwise
+    vec2 rotated_coord = vec2(1.0 - v_texcoord.y, v_texcoord.x);
+    gl_FragColor = texture2D(tex, rotated_coord);
+}
+"""
+        else:
+            # 90° counter-clockwise: (x,y) -> (y, 1-x)
+            fragment_shader = """
+#version 100
+#ifdef GL_ES
+precision mediump float;
+#endif
+varying vec2 v_texcoord;
+uniform sampler2D tex;
+
+void main () {
+    // Rotate 90 degrees counter-clockwise
+    vec2 rotated_coord = vec2(v_texcoord.y, 1.0 - v_texcoord.x);
+    gl_FragColor = texture2D(tex, rotated_coord);
+}
+"""
+        self.element.set_property("fragment", fragment_shader)
 
 def create_pipeline() -> Gst.Pipeline:
     xvidsink = XVidSink()
@@ -164,15 +251,33 @@ def create_pipeline() -> Gst.Pipeline:
     glcolorconvert = GlColorConvert()
 
     original = Pipeline()
-    left_eye = EyePipe("left_eye")
+    #left_eye = EyePipe("left_eye")
+    left_eye = Camera("left_eye")
     original.append(left_eye)
-    f1 = Filter("video/x-raw,format=NV12,width=1280,height=720,framerate=15/1")
-    original.append(f1)
-    #original.append(xvidsink)
+
+    # Request MJPEG from camera for 30fps
+    cam_caps = Filter("image/jpeg,width=1280,height=720,framerate=10/1", name="cam_caps")
+    original.append(cam_caps)
+
+    # Decode MJPEG to raw video
+    jpegdec = JpegDec("jpegdec")
+    original.append(jpegdec)
+
+    # DEBUG: Check dimensions after decode
+    debug1 = Identity("debug_1: after_jpegdec expected=1280x720").enable_caps_logging()
+    original.append(debug1)
 
     glup = GlUplPipe()
     original.append(glup)
     original.append(glcolorconvert)
+
+    # Force RGBA format with correct dimensions before tee
+    force_rgba = Filter("video/x-raw(memory:GLMemory),format=RGBA,width=1280,height=720", name="force_rgba")
+    original.append(force_rgba)
+
+    # DEBUG: Check dimensions after color convert
+    debug2 = Identity("debug_2: after_glcolorconvert expected=1280x720 RGBA").enable_caps_logging()
+    original.append(debug2)
 
     tee = Tee()
     original.append(tee)
@@ -181,6 +286,28 @@ def create_pipeline() -> Gst.Pipeline:
 
     distorted = tee.leg()
     distorted.append(mk)
+
+    # Force correct mixer output dimensions (2x 1280x720 stacked = 1280x1440)
+    mixer_output_caps = Filter("video/x-raw(memory:GLMemory),format=RGBA,width=1280,height=1440", name="mixer_caps")
+    original.append(mixer_output_caps)
+
+    # DEBUG: Check dimensions after mixer
+    debug3 = Identity("debug_3: after_mixer expected=1280x1440").enable_caps_logging()
+    original.append(debug3)
+
+    # Add rotation shader between mixer and sink (stays in GL memory)
+    rotate_shader = GlShaderRotate90(clockwise=False, name="rotate90")
+    original.append(rotate_shader)
+
+    # After rotation, dimensions are swapped: 1280x1440 → 1440x1280
+    # Use Filter class to set the correct proportions after rotation
+    stream_caps = Filter("video/x-raw(memory:GLMemory),format=RGBA,width=1440,height=1280", name="stream_caps")
+    original.append(stream_caps)
+
+    # DEBUG: Check dimensions after rotation
+    debug4 = Identity("debug_4: after_rotation expected=1440x1280").enable_caps_logging()
+    original.append(debug4)
+
 
     original.append(glvidsink)
 
