@@ -67,10 +67,17 @@ def create_pipeline() -> Gst.Pipeline:
     original.append(tee)
     mk = g.MxPipe()
     original.append(mk)
-    mk.this_sink.set_property("ypos", 720)
+    mk.this_sink.set_property("xpos", 0)
+    mk.this_sink.set_property("ypos", 0)
+    mk.this_sink.set_property("width", 1280)
+    mk.this_sink.set_property("height", 720)
 
     distorted = tee.leg()
     distorted.append(mk)
+    mk.this_sink.set_property("xpos", 0)
+    mk.this_sink.set_property("ypos", 720)
+    mk.this_sink.set_property("width", 1280)
+    mk.this_sink.set_property("height", 720)
 
     # Force correct mixer output dimensions (2x 1280x720 stacked = 1280x1440)
     mixer_output_caps = g.Filter("video/x-raw(memory:GLMemory),format=RGBA,width=1280,height=1440", name="mixer caps")
