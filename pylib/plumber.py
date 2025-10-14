@@ -65,6 +65,9 @@ def create_pipeline() -> Gst.Pipeline:
 
     tee = g.Tee()
     original.append(tee)
+    debug_mixer_in_0 = g.Identity("debug: mixer_input_0").enable_caps_logging()
+    original.append(debug_mixer_in_0)
+    
     mk = g.MxPipe()
     original.append(mk)
     mk.this_sink.set_property("xpos", 0)
@@ -73,6 +76,8 @@ def create_pipeline() -> Gst.Pipeline:
     mk.this_sink.set_property("height", 720)
 
     distorted = tee.leg()
+    debug_mixer_in_1 = g.Identity("debug: mixer_input_1").enable_caps_logging()
+    distorted.append(debug_mixer_in_1)
     distorted.append(mk)
     mk.this_sink.set_property("xpos", 0)
     mk.this_sink.set_property("ypos", 720)
