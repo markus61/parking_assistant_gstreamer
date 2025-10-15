@@ -14,12 +14,17 @@ logger = logging.getLogger(__name__)
 # Initialize GStreamer
 Gst.init(sys.argv[1:])
 
+inventory = {}
 class GstElement():
     """Base wrapper for GStreamer elements. Provides name, src/sink pads, and linking."""
     def __init__(self, element: str, name: str):
         self.element = Gst.ElementFactory.make(element, name)
-        self._name = self.element.get_name() if self.element else ""
+        if not self.element:
+            logger.error(f"Failed to create element: {element}. Ensure GStreamer with GL support is installed.")
+            raise RuntimeError(f"{element} creation failed")
+        self._name = self.element.get_name()
         self.pipeline = None
+        inventory[self._name] = self
 
     @property
     def name(self) -> str:
@@ -68,8 +73,29 @@ class Pipeline():
         print(f"Pattern {pattern}")
         return pattern
 
-    def append(self, element: GstElement):
+    def add(self, element: GstElement) -> 'Pipeline':
         self.pipeline.add(element.element)
+        element.pipeline = self.pipeline
+        return self
+    
+    def link(self, sink: Gst.Pad, src: Gst.Pad = None) -> 'Pipeline':
+        # Link tail to new element
+        if not src:
+            src = self.tail.src
+        link_result = src.link(sink)
+        element_name = src.get_parent_element().get_name()
+
+        # Check if link was successful
+        if link_result != Gst.PadLinkReturn.OK:
+            logger.error(f"Failed to link {self.tail.name} -> {element_name}: {link_result}")
+            raise RuntimeError(f"Pad linking failed: {link_result}")
+        self.tail = inventory[element_name]
+        logger.debug(f"Linked {self.tail.name} -> {element_name}")
+
+        return self
+
+    def append(self, element: GstElement) -> 'Pipeline':
+        self.add(element)
         element.pipeline = self.pipeline
         type_name = element.element.__gtype__.name
 
@@ -77,17 +103,13 @@ class Pipeline():
             self.tail = element
             return self
 
-        # Link tail to new element
-        link_result = self.tail.src.link(element.sink)
-
-        # Check if link was successful
-        if link_result != Gst.PadLinkReturn.OK:
-            logger.error(f"Failed to link {self.tail.name} -> {element.name}: {link_result}")
-            raise RuntimeError(f"Pad linking failed: {link_result}")
-
-        logger.debug(f"Linked {self.tail.name} -> {element.name}")
-        self.tail = element
-        return self
+        # we do not link if element is a source (no sink pad)
+        if element.sink is None:
+            logger.debug(f"Not linking {type_name} ({element.name}) as it has no sink pad.")
+            self.tail = element
+            return self
+        
+        return self.link(element.sink)
 
     def cleanup(self):
         """Sets the pipeline to NULL state to stop it and free resources."""
@@ -194,13 +216,12 @@ class JpegDec(GstElement):
     def __init__(self, name: str = None):
         super().__init__("jpegdec", name)
 
-class EyePipe(GstElement):
+class VideoTestSrc(GstElement):
     """
     Test video source with patterns. No sink pad (source element only).
     Set pattern: element.set_property("pattern", 0)  # 0-25 different patterns
     """
     def __init__(self, name: str = None):
-        name = "eye" if not name else name
         super().__init__("videotestsrc", name)    
       
 class GlUplPipe(GstElement):
