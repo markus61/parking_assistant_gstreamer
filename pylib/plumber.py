@@ -18,8 +18,6 @@ def create_pipeline() -> Gst.Pipeline:
             raise e
     print(f"Machine type detected: {MACHINE}, DEV={DEV}")
 
-    glcolorconvert = g.GlColorConvert()
-
     original = g.Pipeline()
     left_eye = g.Camera("left_eye")
 
@@ -39,7 +37,7 @@ def create_pipeline() -> Gst.Pipeline:
         left_eye.element.set_property("device", "/dev/video31")
         left_eye.element.set_property("io-mode", 4)  # 0:MMAP, 1:USERPTR, 2:DMA-BUF, 4:DMABUF-IMPORT
         original.append(left_eye)
-        cam_caps = g.Filter("video/x-raw,format=NV12,width=1280,height=720,framerate=15/1", name="cam caps")
+        cam_caps = g.Filter("video/x-raw,format=RGBA,width=1280,height=720,framerate=15/1", name="cam caps")
         original.append(cam_caps)
 
     # DEBUG: Check dimensions after decode
@@ -48,7 +46,6 @@ def create_pipeline() -> Gst.Pipeline:
 
     glup = g.GlUplPipe()
     original.append(glup)
-    original.append(glcolorconvert)
 
     # DEBUG: Check dimensions after color convert
     debug2 = g.Identity("debug_2: after_glcolorconvert expected=1280x720 RGBA").enable_caps_logging()
@@ -56,6 +53,7 @@ def create_pipeline() -> Gst.Pipeline:
 
     tee = g.Tee()
     original.append(tee)
+
     debug_mixer_in_0 = g.Identity("debug: mixer_input_0").enable_caps_logging()
     original.append(debug_mixer_in_0)
     
