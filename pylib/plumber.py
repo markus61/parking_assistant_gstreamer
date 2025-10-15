@@ -5,6 +5,64 @@ from gi.repository import Gst # type: ignore
 
 from . import gstreamer as g
 
+def left_eye_pipeline(pl:g.Pipeline, DEV:bool) -> g.Pipeline:
+    left_eye = g.Camera("left_eye")
+    # LEFT EYE!
+    # Camera caps: DEV uses MJPEG, Rock uses raw NV12
+    if DEV:
+        left_eye.element.set_property("device", "/dev/video1")
+        left_eye.element.set_property("io-mode", 2)  # 0:MMAP, 1:USERPTR, 2:DMA-BUF
+        pl.append(left_eye)
+        cam_caps = g.Filter("image/jpeg,width=1280,height=720,framerate=15/1",  name="cam caps")
+        pl.append(cam_caps)
+        # Decode MJPEG to raw video only in DEV mode
+        jpegdec = g.JpegDec("jpegdec")
+        pl.append(jpegdec)
+    else:
+        # camera props
+        left_eye.element.set_property("device", "/dev/video31")
+        left_eye.element.set_property("io-mode", 4)  # 0:MMAP, 1:USERPTR, 2:DMA-BUF, 4:DMABUF-IMPORT
+        pl.append(left_eye)
+        cam_caps = g.Filter("video/x-raw,format=NV12,width=1280,height=720,framerate=15/1", name="cam caps")
+        pl.append(cam_caps)
+    # DEBUG: Check dimensions after decode
+    debug1 = g.Identity("debug_left: before_glup expected=1280x720").enable_caps_logging()
+    pl.append(debug1)
+
+    glup = g.GlUplPipe()
+    pl.append(glup)
+
+    return pl
+
+def right_eye_pipeline(pl:g.Pipeline, DEV:bool) -> g.Pipeline:
+    right_eye = g.Camera("left_eye")
+    # LEFT EYE!
+    # Camera caps: DEV uses MJPEG, Rock uses raw NV12
+    if DEV:
+        right_eye.element.set_property("device", "/dev/video1")
+        right_eye.element.set_property("io-mode", 2)  # 0:MMAP, 1:USERPTR, 2:DMA-BUF
+        pl.append(right_eye)
+        cam_caps = g.Filter("image/jpeg,width=1280,height=720,framerate=15/1",  name="cam caps")
+        pl.append(cam_caps)
+        # Decode MJPEG to raw video only in DEV mode
+        jpegdec = g.JpegDec("jpegdec")
+        pl.append(jpegdec)
+    else:
+        # camera props
+        right_eye.element.set_property("device", "/dev/video31")
+        right_eye.element.set_property("io-mode", 4)  # 0:MMAP, 1:USERPTR, 2:DMA-BUF, 4:DMABUF-IMPORT
+        pl.append(right_eye)
+        cam_caps = g.Filter("video/x-raw,format=NV12,width=1280,height=720,framerate=15/1", name="cam caps")
+        pl.append(cam_caps)
+    # DEBUG: Check dimensions after decode
+    debug1 = g.Identity("debug_right: before_glup expected=1280x720").enable_caps_logging()
+    pl.append(debug1)
+
+    glup = g.GlUplPipe()
+    pl.append(glup)
+
+    return pl
+
 def create_pipeline() -> Gst.Pipeline:
     MACHINE = "rock"  # or "aarch64"
     DEV = False
@@ -18,47 +76,20 @@ def create_pipeline() -> Gst.Pipeline:
             raise e
     print(f"Machine type detected: {MACHINE}, DEV={DEV}")
 
-    original = g.Pipeline()
-    left_eye = g.Camera("left_eye")
-
-    # camera props
-    # Camera caps: DEV uses MJPEG, Rock uses raw NV12
-    if DEV:
-        left_eye.element.set_property("device", "/dev/video1")
-        left_eye.element.set_property("io-mode", 2)  # 0:MMAP, 1:USERPTR, 2:DMA-BUF
-        original.append(left_eye)
-        cam_caps = g.Filter("image/jpeg,width=1280,height=720,framerate=15/1",  name="cam caps")
-        original.append(cam_caps)
-        # Decode MJPEG to raw video only in DEV mode
-        jpegdec = g.JpegDec("jpegdec")
-        original.append(jpegdec)
-    else:
-        # camera props
-        left_eye.element.set_property("device", "/dev/video31")
-        left_eye.element.set_property("io-mode", 4)  # 0:MMAP, 1:USERPTR, 2:DMA-BUF, 4:DMABUF-IMPORT
-        original.append(left_eye)
-
-    cam_caps = g.Filter("video/x-raw,format=NV12,width=1280,height=720,framerate=15/1", name="cam caps")
-    original.append(cam_caps)
-    # DEBUG: Check dimensions after decode
-    debug1 = g.Identity("debug_1: after_jpegdec expected=1280x720").enable_caps_logging()
-    original.append(debug1)
-
-    glup = g.GlUplPipe()
-    original.append(glup)
-
+    pl = g.Pipeline()
+    pl = left_eye_pipeline(pl, DEV)
     # DEBUG: Check dimensions after color convert
-    debug2 = g.Identity("debug_2: after_glcolorconvert expected=1280x720 RGBA").enable_caps_logging()
-    original.append(debug2)
+    debug2 = g.Identity("debug_2: after glupload expected=1280x720 RGBA").enable_caps_logging()
+    pl.append(debug2)
 
     tee = g.Tee()
-    original.append(tee)
+    pl.append(tee)
 
     debug_mixer_in_0 = g.Identity("debug: mixer_input_0").enable_caps_logging()
-    original.append(debug_mixer_in_0)
+    pl.append(debug_mixer_in_0)
     
     mk = g.MxPipe()
-    original.append(mk)
+    pl.append(mk)
 
     distorted = tee.leg()
     debug_mixer_in_1 = g.Identity("debug: mixer_input_1").enable_caps_logging()
@@ -68,53 +99,53 @@ def create_pipeline() -> Gst.Pipeline:
 
     # Force correct mixer output dimensions (2x 1280x720 stacked = 1280x1440)
     mixer_output_caps = g.Filter("video/x-raw(memory:GLMemory),format=RGBA,width=1280,height=1440", name="mixer caps")
-    original.append(mixer_output_caps)
+    pl.append(mixer_output_caps)
 
     # DEBUG: Check dimensions after mixer
     debug3 = g.Identity("debug_3: after_mixer expected=1280x1440").enable_caps_logging()
-    original.append(debug3)
+    pl.append(debug3)
 
     # Add rotation shader between mixer and sink (stays in GL memory)
     rotate_shader = g.GlShaderRotate90(clockwise=True, name="rotate90")
-    original.append(rotate_shader)
+    pl.append(rotate_shader)
 
     # After rotation, dimensions are swapped: 1280x1440 → 1440x1280
     # Use Filter class to set the correct proportions after rotation
     stream_caps = g.Filter("video/x-raw(memory:GLMemory),format=RGBA,width=1440,height=1280", name="stream caps")
-    original.append(stream_caps)
+    pl.append(stream_caps)
 
     # DEBUG: Check dimensions after rotation
     debug4 = g.Identity("debug_4: after_rotation expected=1440x1280").enable_caps_logging()
-    original.append(debug4)
+    pl.append(debug4)
 
     if DEV:
         stream_sink = g.GlVidSink()
-        original.append(stream_sink)
+        pl.append(stream_sink)
     else:
         # For Rock: add encoder chain before sink
         # Download from GL memory to system memory
         gldownload = g.GlDownload()
-        original.append(gldownload)
+        pl.append(gldownload)
 
         # Convert to NV12 for encoder
         videoconvert = g.VideoConvert()
-        original.append(videoconvert)
+        pl.append(videoconvert)
 
         nv12_caps = g.Filter("video/x-raw,format=NV12", name="encoder caps")
-        original.append(nv12_caps)
+        pl.append(nv12_caps)
 
         # Hardware encoder reuse from above
         rock265enc.element.set_property("rc-mode", "cbr")
         rock265enc.element.set_property("bps", 2000000)
         rock265enc.element.set_property("gop", 15)
-        original.append(rock265enc)
+        pl.append(rock265enc)
 
         # RTP payloader
         rtppay = g.RtpH265Pay("rtppay")
         rtppay.element.set_property("pt", 96)
         rtppay.element.set_property("config-interval", 1)
         rtppay.element.set_property("mtu", 1200)
-        original.append(rtppay)
+        pl.append(rtppay)
 
         stream_sink = g.UDPSink()
         stream_sink.element.set_property("host", "192.168.0.2")
@@ -122,7 +153,7 @@ def create_pipeline() -> Gst.Pipeline:
         stream_sink.element.set_property("sync", False)
         stream_sink.element.set_property("async", False)
         stream_sink.element.set_property("qos", False)
-        original.append(stream_sink)
+        pl.append(stream_sink)
 
-    return original.pipeline
+    return pl.pipeline
 
