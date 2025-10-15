@@ -6,8 +6,9 @@ from gi.repository import Gst # type: ignore
 from . import gstreamer as g
 
 pl = g.Pipeline()
+DEV = False
 
-def left_eye_pipeline(DEV:bool) -> Gst.Pad:
+def left_eye_pipeline() -> Gst.Pad:
     left_eye = g.Camera("left_eye")
     # LEFT EYE!
     # Camera caps: DEV uses MJPEG, Rock uses raw NV12
@@ -34,22 +35,17 @@ def left_eye_pipeline(DEV:bool) -> Gst.Pad:
     glup = g.GlUplPipe()
     pl.append(glup)
 
-    return pl.tail.src
+    return pl.tail
 
-def right_eye_pipeline(DEV:bool) -> Gst.Pad:
-    right_eye = g.Camera("left_eye")
+def right_eye_pipeline() -> Gst.Pad:
     # LEFT EYE!
     # Camera caps: DEV uses MJPEG, Rock uses raw NV12
     if DEV:
         right_eye = g.TestVidSrc("right_eye")
-        pl.append(right_eye)
-        cam_caps = g.Filter("image/jpeg,width=1280,height=720,framerate=15/1",  name="cam caps right")
-        pl.append(cam_caps)
-        # Decode MJPEG to raw video only in DEV mode
-        jpegdec = g.JpegDec("jpegdec_right")
-        pl.append(jpegdec)
+        pl.add(right_eye)
     else:
         # camera props
+        right_eye = g.Camera("right_eye")
         right_eye.element.set_property("device", "/dev/video31")
         right_eye.element.set_property("io-mode", 4)  # 0:MMAP, 1:USERPTR, 2:DMA-BUF, 4:DMABUF-IMPORT
         pl.append(right_eye)
@@ -62,11 +58,11 @@ def right_eye_pipeline(DEV:bool) -> Gst.Pad:
     glup = g.GlUplPipe()
     pl.append(glup)
 
-    return pl.tail.src
+    return pl.tail
 
 def create_pipeline() -> Gst.Pipeline:
+    global DEV
     MACHINE = "rock"  # or "aarch64"
-    DEV = False
     try:
         rock265enc = g.Rock265Enc("rock265enc")
     except RuntimeError as e:
@@ -77,26 +73,17 @@ def create_pipeline() -> Gst.Pipeline:
             raise e
     print(f"Machine type detected: {MACHINE}, DEV={DEV}")
 
-    left = left_eye_pipeline(DEV)
-    #right = right_eye_pipeline(DEV)
+    left_element = left_eye_pipeline()
+    right_element = right_eye_pipeline()
 
     # DEBUG: Check dimensions after color convert
     debug2 = g.Identity("debug_2: after glupload expected=1280x720 RGBA").enable_caps_logging()
     pl.append(debug2)
 
-    tee = g.Tee()
-    pl.append(tee)
-
-    debug_mixer_in_0 = g.Identity("debug: mixer_input_0").enable_caps_logging()
-    pl.append(debug_mixer_in_0)
-    
     mk = g.MxPipe()
     pl.append(mk)
-
-    distorted = tee.leg()
-    debug_mixer_in_1 = g.Identity("debug: mixer_input_1").enable_caps_logging()
-    distorted.append(debug_mixer_in_1)
-    distorted.append(mk)
+    pl.tail = left_element
+    pl.append(mk)
     mk.this_sink.set_property("ypos", 720)
 
     # Force correct mixer output dimensions (2x 1280x720 stacked = 1280x1440)

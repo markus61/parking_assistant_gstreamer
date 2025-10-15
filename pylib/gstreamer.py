@@ -71,16 +71,13 @@ class Pipeline():
     def add(self, element: Element):
         self.pipeline.add(element.element)
         element.pipeline = self.pipeline
+        self.tail = element
         return self
 
     def link(self, element: Element):
         if not element.pipeline:
             raise RuntimeError("Element must be added to a pipeline before linking.")
         
-        if self.tail is None:
-            self.tail = element
-            return self
-
         # Link tail to new element
         link_result = self.tail.src.link(element.sink)
         if link_result != Gst.PadLinkReturn.OK:
@@ -92,7 +89,15 @@ class Pipeline():
         return self
 
     def append(self, element: Element):
+        """
+        Appends an element to the pipeline, linking it to the tail if it exists.
+        If the pipeline is empty, the element is added to the pipeline.
+        """
+        if self.tail is None:
+            return self.add(element)
+        tail = self.tail
         self.add(element)
+        self.tail = tail
         return self.link(element)
 
     def cleanup(self):
