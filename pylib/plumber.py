@@ -23,7 +23,7 @@ def left_eye_pipeline() -> Gst.Pad:
         pl.append(jpegdec)
     else:
         # camera props
-        left_eye.element.set_property("device", "/dev/video31")
+        left_eye.element.set_property("device", "/dev/video22")
         left_eye.element.set_property("io-mode", 4)  # 0:MMAP, 1:USERPTR, 2:DMA-BUF, 4:DMABUF-IMPORT
         pl.append(left_eye)
         cam_caps = g.Filter("video/x-raw,format=NV12,width=1280,height=720,framerate=15/1", name="cam caps")
@@ -50,7 +50,7 @@ def right_eye_pipeline() -> Gst.Pad:
     else:
         # camera props
         right_eye = g.Camera("right_eye")
-        right_eye.element.set_property("device", "/dev/video22")
+        right_eye.element.set_property("device", "/dev/video31")
         right_eye.element.set_property("io-mode", 4)  # 0:MMAP, 1:USERPTR, 2:DMA-BUF, 4:DMABUF-IMPORT
         pl.add(right_eye)
         right_caps = g.Filter("video/x-raw,format=NV12,width=1280,height=720,framerate=15/1", name="right caps")
