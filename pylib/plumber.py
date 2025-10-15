@@ -13,7 +13,7 @@ def left_eye_pipeline() -> Gst.Pad:
     # Camera caps: DEV uses MJPEG, Rock uses raw NV12
     if DEV:
         left_eye = g.TestVidSrc("left_eye")
-        left_eye.element.set_property("pattern", 0)  # 0:SMOOTH, 1:CHECKERS, 2:BLACK, 3:WHITE, 4:RED, 5:GREEN, 6:BLUE
+        left_eye.element.set_property("pattern", 10)  
         left_eye.element.set_property("is-live", True)
         pl.append(left_eye)
     else:
@@ -33,6 +33,11 @@ def left_eye_pipeline() -> Gst.Pad:
     pl.append(glup)
     convert = g.GlColorConvert()
     pl.append(convert)
+
+    # Add distortion correction BEFORE rotation
+    distortion_fix = g.GlShaderDistortionCorrection(k1=-0.15, k2=0.0, name="distortion_left")
+    pl.append(distortion_fix)
+
     # Add rotation shader between mixer and sink (stays in GL memory)
     rotate_shader = g.GlShaderRotate90(clockwise=False, name="rotate_left")
     pl.append(rotate_shader)
@@ -71,6 +76,11 @@ def right_eye_pipeline() -> Gst.Pad:
     pl.append(glup)
     convert = g.GlColorConvert()
     pl.append(convert)
+
+    # Add distortion correction BEFORE rotation
+    distortion_fix = g.GlShaderDistortionCorrection(k1=-0.15, k2=0.0, name="distortion_right")
+    pl.append(distortion_fix)
+
     # Add rotation shader between mixer and sink (stays in GL memory)
     rotate_shader = g.GlShaderRotate90(clockwise=True, name="rotate_right")
     pl.append(rotate_shader)

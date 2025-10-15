@@ -345,6 +345,55 @@ void main () {{
 """
         self.element.set_property("fragment", fragment_shader)
 
+class GlShaderDistortionCorrection(Element):
+    """
+    Custom GL shader for barrel/pincushion distortion correction.
+    Corrects lens distortion to straighten curved lines.
+    Requires video/x-raw(memory:GLMemory) input.
+    """
+    def __init__(self, k1: float = -0.15, k2: float = 0.0, name: str = None):
+        super().__init__("glshader", name)
+
+        # k1: barrel distortion coefficient (negative values correct barrel distortion)
+        # k2: second-order coefficient for more complex distortion
+        # Typical values: k1 = -0.1 to -0.3 for barrel correction
+
+        fragment_shader = f"""
+#version 100
+#ifdef GL_ES
+precision mediump float;
+#endif
+varying vec2 v_texcoord;
+uniform sampler2D tex;
+
+void main () {{
+    // Center the coordinates (-0.5 to 0.5 range)
+    vec2 centered = v_texcoord - 0.5;
+
+    // Calculate radius from center
+    float r2 = dot(centered, centered);
+    float r4 = r2 * r2;
+
+    // Apply distortion correction
+    // distortion = 1 + k1*r^2 + k2*r^4
+    float distortion = 1.0 + {k1} * r2 + {k2} * r4;
+
+    // Apply correction and recenter
+    vec2 corrected = centered * distortion + 0.5;
+
+    // Sample texture with corrected coordinates
+    // Clamp to avoid sampling outside texture
+    if (corrected.x >= 0.0 && corrected.x <= 1.0 &&
+        corrected.y >= 0.0 && corrected.y <= 1.0) {{
+        gl_FragColor = texture2D(tex, corrected);
+    }} else {{
+        // Black for out-of-bounds areas
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+    }}
+}}
+"""
+        self.element.set_property("fragment", fragment_shader)
+
 class GlDownload(Element):
     """
     Downloads video from OpenGL memory to system memory.
