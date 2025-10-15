@@ -27,7 +27,7 @@ def create_pipeline() -> Gst.Pipeline:
         left_eye.element.set_property("device", "/dev/video1")
         left_eye.element.set_property("io-mode", 2)  # 0:MMAP, 1:USERPTR, 2:DMA-BUF
         original.append(left_eye)
-        cam_caps = g.Filter("image/jpeg,width=1280,height=720,framerate=10/1", name="cam caps")
+        cam_caps = g.Filter("image/jpeg,width=1280,height=720,framerate=15/1",  name="cam caps")
         original.append(cam_caps)
         # Decode MJPEG to raw video only in DEV mode
         jpegdec = g.JpegDec("jpegdec")
@@ -37,9 +37,9 @@ def create_pipeline() -> Gst.Pipeline:
         left_eye.element.set_property("device", "/dev/video31")
         left_eye.element.set_property("io-mode", 4)  # 0:MMAP, 1:USERPTR, 2:DMA-BUF, 4:DMABUF-IMPORT
         original.append(left_eye)
-        cam_caps = g.Filter("video/x-raw,format=NV12,width=1280,height=720,framerate=15/1", name="cam caps")
-        original.append(cam_caps)
 
+    cam_caps = g.Filter("video/x-raw,format=NV12,width=1280,height=720,framerate=15/1", name="cam caps")
+    original.append(cam_caps)
     # DEBUG: Check dimensions after decode
     debug1 = g.Identity("debug_1: after_jpegdec expected=1280x720").enable_caps_logging()
     original.append(debug1)
