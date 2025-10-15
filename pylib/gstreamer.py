@@ -319,10 +319,10 @@ class GlShaderRotate90(Element):
     Swaps width/height - follow with capsfilter for rotated dimensions.
     Requires video/x-raw(memory:GLMemory) input.
     """
-    def __init__(self, clockwise: bool = True, name: str = None):
+    def __init__(self, clockwise: bool = True, distortion_k1: float = 0.0, name: str = None):
         super().__init__("glshader", name)
 
-        # Fragment shader for rotation
+        # Fragment shader for rotation with optional distortion correction
         if clockwise:
             # 90° clockwise: (x,y) -> (1-y, x)
             transform = "1.0 - v_texcoord.y, v_texcoord.x"
@@ -339,24 +339,51 @@ varying vec2 v_texcoord;
 uniform sampler2D tex;
 
 void main () {{
+    vec2 uv = v_texcoord;
+
+    // Apply barrel distortion correction BEFORE rotation
+    float k1 = {distortion_k1};
+    if (k1 != 0.0) {{
+        // Center coordinates
+        vec2 centered = uv - 0.5;
+
+        // Calculate radius squared
+        float r2 = dot(centered, centered);
+
+        // Apply distortion: new_r = r * (1 + k1*r^2)
+        float distortion = 1.0 + k1 * r2;
+
+        // Apply correction
+        uv = centered * distortion + 0.5;
+    }}
+
+    // Then apply rotation
     vec2 rotated_coord = vec2({transform});
-    gl_FragColor = texture2D(tex, rotated_coord);
+
+    // Sample with bounds checking
+    if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0) {{
+        gl_FragColor = texture2D(tex, rotated_coord);
+    }} else {{
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+    }}
 }}
 """
         self.element.set_property("fragment", fragment_shader)
 
-class GlShaderDistortionCorrection(Element):
+class GlShaderPerspectiveCorrection(Element):
     """
-    Custom GL shader for barrel/pincushion distortion correction.
-    Corrects lens distortion to straighten curved lines.
+    Custom GL shader for perspective correction of physically rotated cameras.
+    Corrects the trapezoidal distortion from angled camera views.
+    Use for cameras that are physically tilted/rotated.
     Requires video/x-raw(memory:GLMemory) input.
     """
-    def __init__(self, k1: float = -0.15, k2: float = 0.0, name: str = None):
+    def __init__(self, keystone: float = 0.0, name: str = None):
         super().__init__("glshader", name)
 
-        # k1: barrel distortion coefficient (negative values correct barrel distortion)
-        # k2: second-order coefficient for more complex distortion
-        # Typical values: k1 = -0.1 to -0.3 for barrel correction
+        # keystone: vertical perspective correction
+        # Positive values: correct for camera tilted up (bottom narrower)
+        # Negative values: correct for camera tilted down (top narrower)
+        # Typical range: -0.3 to +0.3
 
         fragment_shader = f"""
 #version 100
@@ -367,22 +394,25 @@ varying vec2 v_texcoord;
 uniform sampler2D tex;
 
 void main () {{
-    // Center the coordinates (-0.5 to 0.5 range)
-    vec2 centered = v_texcoord - 0.5;
+    vec2 uv = v_texcoord;
 
-    // Calculate radius from center
-    float r2 = dot(centered, centered);
-    float r4 = r2 * r2;
+    // Apply vertical keystone correction
+    // The keystone parameter adjusts the perspective
+    float keystone_factor = {keystone};
 
-    // Apply distortion correction
-    // distortion = 1 + k1*r^2 + k2*r^4
-    float distortion = 1.0 + {k1} * r2 + {k2} * r4;
+    // Calculate the scaling factor based on vertical position
+    // This creates a trapezoidal correction
+    float y_centered = uv.y - 0.5;
+    float scale = 1.0 + keystone_factor * y_centered;
 
-    // Apply correction and recenter
-    vec2 corrected = centered * distortion + 0.5;
+    // Apply horizontal scaling based on vertical position
+    float x_centered = uv.x - 0.5;
+    float corrected_x = (x_centered / scale) + 0.5;
+    float corrected_y = uv.y;
+
+    vec2 corrected = vec2(corrected_x, corrected_y);
 
     // Sample texture with corrected coordinates
-    // Clamp to avoid sampling outside texture
     if (corrected.x >= 0.0 && corrected.x <= 1.0 &&
         corrected.y >= 0.0 && corrected.y <= 1.0) {{
         gl_FragColor = texture2D(tex, corrected);
