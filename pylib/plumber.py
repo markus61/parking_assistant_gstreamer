@@ -34,6 +34,14 @@ def left_eye_pipeline() -> Gst.Pad:
 
     glup = g.GlUplPipe()
     pl.append(glup)
+    convert = g.GlColorConvert()
+    pl.append(convert)
+    # Add rotation shader between mixer and sink (stays in GL memory)
+    rotate_shader = g.GlShaderRotate90(clockwise=True, name="rotate_left")
+    pl.append(rotate_shader)
+    # After rotation, dimensions are swapped: 1280x720 → 720x1280
+    rotated_caps = g.Filter("video/x-raw(memory:GLMemory),format=RGBA,width=720,height=1280", name="left_rotated_caps")
+    pl.append(rotated_caps)
 
     return pl.tail
 
@@ -61,6 +69,14 @@ def right_eye_pipeline() -> Gst.Pad:
 
     glup = g.GlUplPipe()
     pl.append(glup)
+    convert = g.GlColorConvert()
+    pl.append(convert)
+    # Add rotation shader between mixer and sink (stays in GL memory)
+    rotate_shader = g.GlShaderRotate90(clockwise=False, name="rotate_right")
+    pl.append(rotate_shader)
+    # After rotation, dimensions are swapped: 1280x720 → 720x1280
+    rotated_caps = g.Filter("video/x-raw(memory:GLMemory),format=RGBA,width=720,height=1280", name="right_rotated_caps")
+    pl.append(rotated_caps)
 
     return pl.tail
 
@@ -81,35 +97,20 @@ def create_pipeline() -> Gst.Pipeline:
     right = right_eye_pipeline()
 
     # DEBUG: Check dimensions after color convert
-    debug2 = g.Identity("debug_2: after glupload expected=1280x720 RGBA").enable_caps_logging()
+    debug2 = g.Identity("debug_2: after glupload expected=720x1280 RGBA").enable_caps_logging()
     pl.append(debug2)
 
     mk = g.MxPipe()
     pl.append(mk)
     pl.tail = left_element
     pl.append(mk)
-    mk.this_sink.set_property("ypos", 720)
-
-    # Force correct mixer output dimensions (2x 1280x720 stacked = 1280x1440)
-    mixer_output_caps = g.Filter("video/x-raw(memory:GLMemory),format=RGBA,width=1280,height=1440", name="mixer caps")
-    pl.append(mixer_output_caps)
-
-    # DEBUG: Check dimensions after mixer
-    debug3 = g.Identity("debug_3: after_mixer expected=1280x1440").enable_caps_logging()
-    pl.append(debug3)
-
-    # Add rotation shader between mixer and sink (stays in GL memory)
-    rotate_shader = g.GlShaderRotate90(clockwise=True, name="rotate90")
-    pl.append(rotate_shader)
+    mk.this_sink.set_property("xpos", 720)
 
     # After rotation, dimensions are swapped: 1280x1440 → 1440x1280
     # Use Filter class to set the correct proportions after rotation
     stream_caps = g.Filter("video/x-raw(memory:GLMemory),format=RGBA,width=1440,height=1280", name="stream caps")
     pl.append(stream_caps)
 
-    # DEBUG: Check dimensions after rotation
-    debug4 = g.Identity("debug_4: after_rotation expected=1440x1280").enable_caps_logging()
-    pl.append(debug4)
 
     if DEV:
         stream_sink = g.GlVidSink()
