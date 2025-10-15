@@ -43,7 +43,8 @@ class CameraConfig:
         pan_angle: float = 37.5,
         camera_spacing: float = 0.1,
         distance_to_wall: float = 4.0,
-        reference_object_size: float = 0.094
+        reference_object_size: float = 0.094,
+        enable_perspective_correction: bool = True
     ):
         """
         Initialize camera configuration.
@@ -59,6 +60,7 @@ class CameraConfig:
             camera_spacing: Distance between cameras in meters (default: 0.1)
             distance_to_wall: Distance to target wall in meters (default: 4.0)
             reference_object_size: Known object size for calibration in meters (default: 0.094)
+            enable_perspective_correction: Enable/disable perspective correction (default: True)
         """
         # Hardware intrinsics (fixed)
         self.h_fov: float = h_fov
@@ -77,6 +79,9 @@ class CameraConfig:
 
         # Calibration reference
         self.reference_object_size: float = reference_object_size
+
+        # Perspective correction control
+        self.enable_perspective_correction: bool = enable_perspective_correction
 
     def compute_focal_length_pixels(self) -> Tuple[float, float]:
         """
@@ -110,17 +115,22 @@ class CameraConfig:
 
     def compute_homography_matrix(self, camera_side: str) -> list:
         """
-        Compute 3x3 homography matrix for perspective correction.
+        Compute 3x3 homography matrix for perspective correction in texture space.
 
         Corrects the keystone distortion caused by camera pan angle.
-        The homography transforms the trapezoidal view from an angled camera
-        into a rectangular orthographic projection.
+        Works in normalized texture coordinates [0,1], not pixel space.
+
+        For a camera panned by angle θ viewing a frontal plane:
+        - The plane appears as a trapezoid (keystone distortion)
+        - One edge is compressed (far from camera), other expanded (near)
+        - Homography warps this back to a rectangle
 
         Args:
             camera_side: 'left' or 'right' to determine pan direction
 
         Returns:
             List of 9 floats in row-major order [h11, h12, h13, h21, h22, h23, h31, h32, h33]
+            For use directly in GL shader with normalized [0,1] texture coordinates.
 
         Raises:
             ValueError: If camera_side is not 'left' or 'right'
@@ -130,64 +140,32 @@ class CameraConfig:
 
         # Determine pan direction: left camera pans left (negative), right pans right (positive)
         pan_sign = -1 if camera_side == 'left' else 1
-        pan_radians = math.radians(pan_sign * self.pan_angle)
+        theta = math.radians(pan_sign * self.pan_angle)
 
-        # Get camera intrinsic parameters
-        fx, fy = self.compute_focal_length_pixels()
-        cx, cy = self.compute_principal_point()
+        # Compute the perspective distortion factor
+        tan_theta = math.tan(theta)
 
-        # Compute rotation matrix for pan angle (rotation around Y-axis in world coords)
-        # After 90° roll, this becomes rotation in the camera's effective coordinate system
-        cos_p = math.cos(pan_radians)
-        sin_p = math.sin(pan_radians)
+        # Texture-space homography for horizontal pan (yaw rotation)
+        # This operates on normalized [0,1] coordinates, NOT pixels
+        #
+        # The homography applies perspective correction:
+        #   H = [[1,    0, 0],
+        #        [0,    1, 0],
+        #        [h31,  0, 1]]
+        #
+        # where h31 = -tan(θ) for the inverse transform
+        # (shader samples FROM distorted TO corrected)
 
-        # Build homography H = K * R_pan * K^-1 using manual matrix operations
-        # This avoids numpy dependency
+        h31 = -tan_theta  # Negative for inverse transform
 
-        # K = [[fx, 0, cx],
-        #      [0, fy, cy],
-        #      [0,  0,  1]]
-
-        # K_inv = [[1/fx,    0, -cx/fx],
-        #          [   0, 1/fy, -cy/fy],
-        #          [   0,    0,      1]]
-
-        # R_pan = [[cos_p, 0, sin_p],
-        #          [    0, 1,     0],
-        #          [-sin_p, 0, cos_p]]
-
-        # Compute H = K * R_pan * K_inv step by step
-
-        # Step 1: R_pan * K_inv
-        # Result is 3x3 matrix
-        r_kinv = [
-            [cos_p / fx, 0.0, -cos_p * cx / fx + sin_p],
-            [0.0, 1.0 / fy, -cy / fy],
-            [-sin_p / fx, 0.0, sin_p * cx / fx + cos_p]
+        # Build homography matrix (row-major order)
+        homography = [
+            1.0,  0.0, 0.0,  # Row 1: [1, 0, 0]
+            0.0,  1.0, 0.0,  # Row 2: [0, 1, 0]
+            h31,  0.0, 1.0   # Row 3: [h31, 0, 1] - perspective term
         ]
 
-        # Step 2: K * (R_pan * K_inv)
-        # H[i][j] = sum over k: K[i][k] * r_kinv[k][j]
-        h11 = fx * r_kinv[0][0]  # fx * (cos_p / fx)
-        h12 = fx * r_kinv[0][1]  # fx * 0
-        h13 = fx * r_kinv[0][2] + cx * r_kinv[2][2]  # fx * (...) + cx * (...)
-
-        h21 = fy * r_kinv[1][0]  # fy * 0
-        h22 = fy * r_kinv[1][1]  # fy * (1/fy)
-        h23 = fy * r_kinv[1][2] + cy * r_kinv[2][2]  # fy * (...) + cy * (...)
-
-        h31 = r_kinv[2][0]
-        h32 = r_kinv[2][1]
-        h33 = r_kinv[2][2]
-
-        # Normalize so h33 = 1.0
-        H = [
-            h11 / h33, h12 / h33, h13 / h33,
-            h21 / h33, h22 / h33, h23 / h33,
-            h31 / h33, h32 / h33, 1.0
-        ]
-
-        return H
+        return homography
 
     def compute_pixels_per_meter(self, elephant_height_pixels: float) -> float:
         """

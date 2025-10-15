@@ -110,14 +110,22 @@ def create_pipeline() -> Gst.Pipeline:
     print(f"Machine type detected: {MACHINE}, DEV={DEV}")
 
     # Camera configuration for perspective correction
-    config = cam.CameraConfig()
+    config = cam.CameraConfig(
+        enable_perspective_correction=False  # Set to True to enable correction
+    )
     print(f"Camera configuration: {config}")
 
-    # Compute homography matrices for left and right cameras
-    left_homography = config.compute_homography_matrix('left')
-    right_homography = config.compute_homography_matrix('right')
-    print(f"Left camera homography computed: {left_homography[:3]}...")
-    print(f"Right camera homography computed: {right_homography[:3]}...")
+    # Compute homography matrices for left and right cameras (if enabled)
+    if config.enable_perspective_correction:
+        left_homography = config.compute_homography_matrix('left')
+        right_homography = config.compute_homography_matrix('right')
+        print(f"Perspective correction ENABLED")
+        print(f"  Left homography: {left_homography[:3]}...")
+        print(f"  Right homography: {right_homography[:3]}...")
+    else:
+        left_homography = None
+        right_homography = None
+        print(f"Perspective correction DISABLED")
 
     left_element = left_eye_pipeline(homography=left_homography)
     right = right_eye_pipeline(homography=right_homography)
