@@ -37,7 +37,7 @@ def create_pipeline() -> Gst.Pipeline:
         left_eye.element.set_property("device", "/dev/video31")
         left_eye.element.set_property("io-mode", 4)  # 0:MMAP, 1:USERPTR, 2:DMA-BUF, 4:DMABUF-IMPORT
         original.append(left_eye)
-        cam_caps = g.Filter("video/x-raw,format=RGBA,width=1280,height=720,framerate=15/1", name="cam caps")
+        cam_caps = g.Filter("video/x-raw,format=NV12,width=1280,height=720,framerate=15/1", name="cam caps")
         original.append(cam_caps)
 
     # DEBUG: Check dimensions after decode
