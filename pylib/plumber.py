@@ -41,13 +41,12 @@ def right_eye_pipeline(DEV:bool) -> Gst.Pad:
     # LEFT EYE!
     # Camera caps: DEV uses MJPEG, Rock uses raw NV12
     if DEV:
-        right_eye.element.set_property("device", "/dev/video1")
-        right_eye.element.set_property("io-mode", 2)  # 0:MMAP, 1:USERPTR, 2:DMA-BUF
+        right_eye = g.TestVidSrc("right_eye")
         pl.append(right_eye)
-        cam_caps = g.Filter("image/jpeg,width=1280,height=720,framerate=15/1",  name="cam caps")
+        cam_caps = g.Filter("image/jpeg,width=1280,height=720,framerate=15/1",  name="cam caps right")
         pl.append(cam_caps)
         # Decode MJPEG to raw video only in DEV mode
-        jpegdec = g.JpegDec("jpegdec")
+        jpegdec = g.JpegDec("jpegdec_right")
         pl.append(jpegdec)
     else:
         # camera props
@@ -79,6 +78,8 @@ def create_pipeline() -> Gst.Pipeline:
     print(f"Machine type detected: {MACHINE}, DEV={DEV}")
 
     left = left_eye_pipeline(DEV)
+    #right = right_eye_pipeline(DEV)
+
     # DEBUG: Check dimensions after color convert
     debug2 = g.Identity("debug_2: after glupload expected=1280x720 RGBA").enable_caps_logging()
     pl.append(debug2)
