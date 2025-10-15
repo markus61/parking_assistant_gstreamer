@@ -9,25 +9,22 @@ pl = g.Pipeline()
 DEV = False
 
 def left_eye_pipeline() -> Gst.Pad:
-    left_eye = g.Camera("left_eye")
     # LEFT EYE!
     # Camera caps: DEV uses MJPEG, Rock uses raw NV12
     if DEV:
-        left_eye.element.set_property("device", "/dev/video1")
-        left_eye.element.set_property("io-mode", 2)  # 0:MMAP, 1:USERPTR, 2:DMA-BUF
+        left_eye = g.TestVidSrc("left_eye")
+        left_eye.element.set_property("pattern", 0)  # 0:SMOOTH, 1:CHECKERS, 2:BLACK, 3:WHITE, 4:RED, 5:GREEN, 6:BLUE
+        left_eye.element.set_property("is-live", True)
         pl.append(left_eye)
-        cam_caps = g.Filter("image/jpeg,width=1280,height=720,framerate=15/1",  name="cam caps")
-        pl.append(cam_caps)
-        # Decode MJPEG to raw video only in DEV mode
-        jpegdec = g.JpegDec("jpegdec")
-        pl.append(jpegdec)
     else:
+        left_eye = g.Camera("left_eye")
         # camera props
         left_eye.element.set_property("device", "/dev/video22")
         left_eye.element.set_property("io-mode", 4)  # 0:MMAP, 1:USERPTR, 2:DMA-BUF, 4:DMABUF-IMPORT
         pl.append(left_eye)
-        cam_caps = g.Filter("video/x-raw,format=NV12,width=1280,height=720,framerate=15/1", name="cam caps")
-        pl.append(cam_caps)
+
+    left_caps = g.Filter("video/x-raw,format=NV12,width=1280,height=720,framerate=15/1", name="left caps")
+    pl.append(left_caps)
     # DEBUG: Check dimensions after decode
     debug1 = g.Identity("debug_left: before_glup expected=1280x720").enable_caps_logging()
     pl.append(debug1)
@@ -46,21 +43,24 @@ def left_eye_pipeline() -> Gst.Pad:
     return pl.tail
 
 def right_eye_pipeline() -> Gst.Pad:
-    # LEFT EYE!
+    # RIGHT EYE!
+    right_eye = g.Camera("right_eye")
+
     # Camera caps: DEV uses MJPEG, Rock uses raw NV12
     if DEV:
-        right_eye = g.TestVidSrc("right_eye")
-        right_eye.element.set_property("pattern", 0)  # 0:SMOOTH, 1:CHECKERS, 2:BLACK, 3:WHITE, 4:RED, 5:GREEN, 6:BLUE
-        right_eye.element.set_property("is-live", True)
+        right_eye.element.set_property("device", "/dev/video1")
+        right_eye.element.set_property("io-mode", 2)  # 0:MMAP, 1:USERPTR, 2:DMA-BUF
         pl.add(right_eye)
-        test_caps = g.Filter("video/x-raw,format=NV12,width=1280,height=720,framerate=15/1", name="test caps")
-        pl.append(test_caps)
+        caps_right = g.Filter("image/jpeg,width=1280,height=720,framerate=15/1",  name="right caps")
+        pl.append(caps_right)
+        # Decode MJPEG to raw video only in DEV mode
+        jpegdec = g.JpegDec("jpegdec")
+        pl.append(jpegdec)
     else:
         # camera props
-        right_eye = g.Camera("right_eye")
         right_eye.element.set_property("device", "/dev/video31")
         right_eye.element.set_property("io-mode", 4)  # 0:MMAP, 1:USERPTR, 2:DMA-BUF, 4:DMABUF-IMPORT
-        pl.add(right_eye)
+        pl.append(right_eye)
         right_caps = g.Filter("video/x-raw,format=NV12,width=1280,height=720,framerate=15/1", name="right caps")
         pl.append(right_caps)
     # DEBUG: Check dimensions after decode
