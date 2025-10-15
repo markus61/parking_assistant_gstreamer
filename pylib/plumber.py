@@ -5,7 +5,9 @@ from gi.repository import Gst # type: ignore
 
 from . import gstreamer as g
 
-def left_eye_pipeline(pl:g.Pipeline, DEV:bool) -> g.Pipeline:
+pl = g.Pipeline()
+
+def left_eye_pipeline(DEV:bool) -> Gst.Pad:
     left_eye = g.Camera("left_eye")
     # LEFT EYE!
     # Camera caps: DEV uses MJPEG, Rock uses raw NV12
@@ -32,9 +34,9 @@ def left_eye_pipeline(pl:g.Pipeline, DEV:bool) -> g.Pipeline:
     glup = g.GlUplPipe()
     pl.append(glup)
 
-    return pl
+    return pl.tail.src
 
-def right_eye_pipeline(pl:g.Pipeline, DEV:bool) -> g.Pipeline:
+def right_eye_pipeline(DEV:bool) -> Gst.Pad:
     right_eye = g.Camera("left_eye")
     # LEFT EYE!
     # Camera caps: DEV uses MJPEG, Rock uses raw NV12
@@ -61,7 +63,7 @@ def right_eye_pipeline(pl:g.Pipeline, DEV:bool) -> g.Pipeline:
     glup = g.GlUplPipe()
     pl.append(glup)
 
-    return pl
+    return pl.tail.src
 
 def create_pipeline() -> Gst.Pipeline:
     MACHINE = "rock"  # or "aarch64"
@@ -76,8 +78,7 @@ def create_pipeline() -> Gst.Pipeline:
             raise e
     print(f"Machine type detected: {MACHINE}, DEV={DEV}")
 
-    pl = g.Pipeline()
-    pl = left_eye_pipeline(pl, DEV)
+    left = left_eye_pipeline(DEV)
     # DEBUG: Check dimensions after color convert
     debug2 = g.Identity("debug_2: after glupload expected=1280x720 RGBA").enable_caps_logging()
     pl.append(debug2)
