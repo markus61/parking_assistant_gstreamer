@@ -370,25 +370,30 @@ void main () {{
 """
         self.element.set_property("fragment", fragment_shader)
 
-class GlShaderPerspectiveCorrection(Element):
+class GlShaderHomography(Element):
     """
-    Custom GL shader for perspective correction of physically rotated cameras.
-    Corrects the trapezoidal distortion from angled camera views.
-    Use for cameras that are physically tilted/rotated.
+    Applies 2D perspective transformation using homography matrix.
+    Corrects keystone distortion from camera pan/tilt angles.
+    Homography transforms trapezoidal view to rectangular orthographic projection.
+    Pass homography as 9 floats (3x3 matrix, row-major order).
     Requires video/x-raw(memory:GLMemory) input.
     """
-    def __init__(self, keystone: float = 0.0, name: str = None):
+    def __init__(self, homography: list = None, name: str = None):
         super().__init__("glshader", name)
 
-        # keystone: vertical perspective correction
-        # Positive values: correct for camera tilted up (bottom narrower)
-        # Negative values: correct for camera tilted down (top narrower)
-        # Typical range: -0.3 to +0.3
+        # Default to identity matrix if not provided (no transformation)
+        if homography is None:
+            homography = [1.0, 0.0, 0.0,
+                         0.0, 1.0, 0.0,
+                         0.0, 0.0, 1.0]
+
+        # Unpack homography matrix elements for shader
+        h = homography
 
         fragment_shader = f"""
 #version 100
 #ifdef GL_ES
-precision mediump float;
+precision highp float;
 #endif
 varying vec2 v_texcoord;
 uniform sampler2D tex;
@@ -396,21 +401,19 @@ uniform sampler2D tex;
 void main () {{
     vec2 uv = v_texcoord;
 
-    // Apply vertical keystone correction
-    // The keystone parameter adjusts the perspective
-    float keystone_factor = {keystone};
+    // Homography matrix (3x3) - perspective transformation
+    mat3 H = mat3(
+        {h[0]}, {h[1]}, {h[2]},
+        {h[3]}, {h[4]}, {h[5]},
+        {h[6]}, {h[7]}, {h[8]}
+    );
 
-    // Calculate the scaling factor based on vertical position
-    // This creates a trapezoidal correction
-    float y_centered = uv.y - 0.5;
-    float scale = 1.0 + keystone_factor * y_centered;
+    // Apply homography: p' = H * p (homogeneous coordinates)
+    vec3 uv_homogeneous = vec3(uv.x, uv.y, 1.0);
+    vec3 transformed = H * uv_homogeneous;
 
-    // Apply horizontal scaling based on vertical position
-    float x_centered = uv.x - 0.5;
-    float corrected_x = (x_centered / scale) + 0.5;
-    float corrected_y = uv.y;
-
-    vec2 corrected = vec2(corrected_x, corrected_y);
+    // Perspective divide to convert back to 2D
+    vec2 corrected = transformed.xy / transformed.z;
 
     // Sample texture with corrected coordinates
     if (corrected.x >= 0.0 && corrected.x <= 1.0 &&

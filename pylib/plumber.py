@@ -4,11 +4,12 @@ gi.require_version("Gst", "1.0")
 from gi.repository import Gst # type: ignore
 
 from . import gstreamer as g
+from . import camera_config as cam
 
 pl = g.Pipeline()
 DEV = False
 
-def left_eye_pipeline() -> Gst.Pad:
+def left_eye_pipeline(homography: list = None) -> Gst.Pad:
     # LEFT EYE!
     # Camera caps: DEV uses MJPEG, Rock uses raw NV12
     if DEV:
@@ -42,9 +43,14 @@ def left_eye_pipeline() -> Gst.Pad:
     rotated_caps = g.Filter("video/x-raw(memory:GLMemory),format=RGBA,width=720,height=1280", name="left_rotated_caps")
     pl.append(rotated_caps)
 
+    # Add perspective correction after rotation (if homography provided)
+    if homography:
+        perspective_correct = g.GlShaderHomography(homography=homography, name="perspective_left")
+        pl.append(perspective_correct)
+
     return pl.tail
 
-def right_eye_pipeline() -> Gst.Pad:
+def right_eye_pipeline(homography: list = None) -> Gst.Pad:
     # RIGHT EYE!
     right_eye = g.Camera("right_eye")
 
@@ -83,6 +89,11 @@ def right_eye_pipeline() -> Gst.Pad:
     rotated_caps = g.Filter("video/x-raw(memory:GLMemory),format=RGBA,width=720,height=1280", name="right_rotated_caps")
     pl.append(rotated_caps)
 
+    # Add perspective correction after rotation (if homography provided)
+    if homography:
+        perspective_correct = g.GlShaderHomography(homography=homography, name="perspective_right")
+        pl.append(perspective_correct)
+
     return pl.tail
 
 def create_pipeline() -> Gst.Pipeline:
@@ -98,8 +109,18 @@ def create_pipeline() -> Gst.Pipeline:
             raise e
     print(f"Machine type detected: {MACHINE}, DEV={DEV}")
 
-    left_element = left_eye_pipeline()
-    right = right_eye_pipeline()
+    # Camera configuration for perspective correction
+    config = cam.CameraConfig()
+    print(f"Camera configuration: {config}")
+
+    # Compute homography matrices for left and right cameras
+    left_homography = config.compute_homography_matrix('left')
+    right_homography = config.compute_homography_matrix('right')
+    print(f"Left camera homography computed: {left_homography[:3]}...")
+    print(f"Right camera homography computed: {right_homography[:3]}...")
+
+    left_element = left_eye_pipeline(homography=left_homography)
+    right = right_eye_pipeline(homography=right_homography)
 
     # DEBUG: Check dimensions after color convert
     debug2 = g.Identity("debug_2: after glupload expected=720x1280 RGBA").enable_caps_logging()
