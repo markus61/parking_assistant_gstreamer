@@ -34,7 +34,7 @@ def left_eye_pipeline() -> Gst.Pad:
     convert = g.GlColorConvert()
     pl.append(convert)
     # Add rotation shader between mixer and sink (stays in GL memory)
-    rotate_shader = g.GlShaderRotate90(clockwise=True, name="rotate_left")
+    rotate_shader = g.GlShaderRotate90(clockwise=False, name="rotate_left")
     pl.append(rotate_shader)
     # After rotation, dimensions are swapped: 1280x720 → 720x1280
     rotated_caps = g.Filter("video/x-raw(memory:GLMemory),format=RGBA,width=720,height=1280", name="left_rotated_caps")
@@ -72,7 +72,7 @@ def right_eye_pipeline() -> Gst.Pad:
     convert = g.GlColorConvert()
     pl.append(convert)
     # Add rotation shader between mixer and sink (stays in GL memory)
-    rotate_shader = g.GlShaderRotate90(clockwise=False, name="rotate_right")
+    rotate_shader = g.GlShaderRotate90(clockwise=True, name="rotate_right")
     pl.append(rotate_shader)
     # After rotation, dimensions are swapped: 1280x720 → 720x1280
     rotated_caps = g.Filter("video/x-raw(memory:GLMemory),format=RGBA,width=720,height=1280", name="right_rotated_caps")
