@@ -7,6 +7,7 @@ gi.require_version("GObject", "2.0")
 gi.require_version("Gst", "1.0")
 
 from gi.repository import Gst, GLib, GObject  # type: ignore
+from . import camera_config
 
 logging.basicConfig(level=logging.DEBUG, format="[%(name)s] [%(levelname)8s] - %(message)s")
 logger = logging.getLogger(__name__)
@@ -356,19 +357,21 @@ void main () {{
 class GlShaderHomography(Element):
     """
     Applies 2D perspective transformation using homography matrix.
-    Corrects keystone distortion from camera pan/tilt angles.
-    Homography transforms trapezoidal view to rectangular orthographic projection.
-    Pass homography as 9 floats (3x3 matrix, row-major order).
+    Corrects keystone distortion from camera tilt angles.
+    Homography transforms perspective view to orthographic projection.
+    Gets camera configuration internally and converts shader to use pixel coordinates.
     Requires video/x-raw(memory:GLMemory) input.
     """
-    def __init__(self, homography: list = None, name: str = None):
+    def __init__(self, name: str = None):
         super().__init__("glshader", name)
 
-        # Default to identity matrix if not provided (no transformation)
-        if homography is None:
-            homography = [1.0, 0.0, 0.0,
-                         0.0, 1.0, 0.0,
-                         0.0, 0.0, 1.0]
+        # Get camera configuration and compute homography matrix
+        config = camera_config.CameraConfig()
+        homography = config.homography_matrix()
+
+        # Get image dimensions
+        width = config.resolution[0]
+        height = config.resolution[1]
 
         # Unpack homography matrix elements for shader
         h = homography
@@ -384,24 +387,30 @@ uniform sampler2D tex;
 void main () {{
     vec2 uv = v_texcoord;
 
-    // Homography matrix (3x3) - perspective transformation
+    // Convert texture coordinates [0,1] to pixel coordinates [0,width]x[0,height]
+    vec2 pixel_coord = uv * vec2({width}.0, {height}.0);
+
+    // Homography matrix (3x3) - perspective transformation in pixel space
     mat3 H = mat3(
         {h[0]}, {h[1]}, {h[2]},
         {h[3]}, {h[4]}, {h[5]},
         {h[6]}, {h[7]}, {h[8]}
     );
 
-    // Apply homography: p' = H * p (homogeneous coordinates)
-    vec3 uv_homogeneous = vec3(uv.x, uv.y, 1.0);
-    vec3 transformed = H * uv_homogeneous;
+    // Apply homography: p' = H * p (homogeneous coordinates in pixel space)
+    vec3 pixel_homogeneous = vec3(pixel_coord.x, pixel_coord.y, 1.0);
+    vec3 transformed = H * pixel_homogeneous;
 
-    // Perspective divide to convert back to 2D
-    vec2 corrected = transformed.xy / transformed.z;
+    // Perspective divide to convert back to 2D pixel coordinates
+    vec2 corrected_pixel = transformed.xy / transformed.z;
+
+    // Convert back to texture coordinates [0,1]
+    vec2 corrected_uv = corrected_pixel / vec2({width}.0, {height}.0);
 
     // Sample texture with corrected coordinates
-    if (corrected.x >= 0.0 && corrected.x <= 1.0 &&
-        corrected.y >= 0.0 && corrected.y <= 1.0) {{
-        gl_FragColor = texture2D(tex, corrected);
+    if (corrected_uv.x >= 0.0 && corrected_uv.x <= 1.0 &&
+        corrected_uv.y >= 0.0 && corrected_uv.y <= 1.0) {{
+        gl_FragColor = texture2D(tex, corrected_uv);
     }} else {{
         // Black for out-of-bounds areas
         gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);

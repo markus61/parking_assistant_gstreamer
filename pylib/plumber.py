@@ -9,7 +9,7 @@ from . import camera_config as cam
 pl = g.Pipeline()
 DEV = False
 
-def left_eye_pipeline(homography: list = None) -> Gst.Pad:
+def left_eye_pipeline() -> Gst.Pad:
     # LEFT EYE!
     # Camera caps: DEV uses MJPEG, Rock uses raw NV12
     if DEV:
@@ -35,10 +35,9 @@ def left_eye_pipeline(homography: list = None) -> Gst.Pad:
     convert = g.GlColorConvert()
     pl.append(convert)
 
-    # Add perspective correction before rotation (if homography provided)
-    if homography:
-        perspective_correct = g.GlShaderHomography(homography=homography, name="perspective_left")
-        pl.append(perspective_correct)
+    # Add perspective correction before rotation (same for both cameras)
+    perspective_correct = g.GlShaderHomography(name="perspective_left")
+    pl.append(perspective_correct)
 
     # Add rotation shader between mixer and sink (stays in GL memory)
     rotate_shader = g.GlShaderRotate90(clockwise=False, name="rotate_left")
@@ -49,7 +48,7 @@ def left_eye_pipeline(homography: list = None) -> Gst.Pad:
 
     return pl.tail
 
-def right_eye_pipeline(homography: list = None) -> Gst.Pad:
+def right_eye_pipeline() -> Gst.Pad:
     # RIGHT EYE!
     right_eye = g.Camera("right_eye")
 
@@ -79,10 +78,9 @@ def right_eye_pipeline(homography: list = None) -> Gst.Pad:
     convert = g.GlColorConvert()
     pl.append(convert)
 
-    # Add perspective correction before rotation (if homography provided)
-    if homography:
-        perspective_correct = g.GlShaderHomography(homography=homography, name="perspective_right")
-        pl.append(perspective_correct)
+    # Add perspective correction before rotation (same for both cameras)
+    perspective_correct = g.GlShaderHomography(name="perspective_right")
+    pl.append(perspective_correct)
 
     # Add rotation shader between mixer and sink (stays in GL memory)
     rotate_shader = g.GlShaderRotate90(clockwise=True, name="rotate_right")
@@ -110,9 +108,8 @@ def create_pipeline() -> Gst.Pipeline:
     config = cam.CameraConfig()
     print(f"Camera configuration: {config}")
 
-    homography = config.homography_matrix()
-    left_element = left_eye_pipeline(homography=homography)
-    right_eye_pipeline(homography=homography)
+    left_element = left_eye_pipeline()
+    right_eye_pipeline()
 
     # DEBUG: Check dimensions after color convert
     debug2 = g.Identity("debug_2: after glupload expected=720x1280 RGBA").enable_caps_logging()
