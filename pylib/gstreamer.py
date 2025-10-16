@@ -373,6 +373,12 @@ class GlShaderHomography(Element):
         width = config.resolution[0]
         height = config.resolution[1]
 
+        # Debug: print homography matrix and config
+        logger.info(f"GlShaderHomography: resolution={width}x{height}")
+        logger.info(f"GlShaderHomography: tilt_angle={config.tilt_angle}°")
+        logger.info(f"GlShaderHomography: distance={config.distance_to_object_plane}m")
+        logger.info(f"GlShaderHomography matrix:\n  [{homography[0]:.6f}, {homography[1]:.6f}, {homography[2]:.6f}]\n  [{homography[3]:.6f}, {homography[4]:.6f}, {homography[5]:.6f}]\n  [{homography[6]:.6f}, {homography[7]:.6f}, {homography[8]:.6f}]")
+
         # Unpack homography matrix elements for shader
         h = homography
 
