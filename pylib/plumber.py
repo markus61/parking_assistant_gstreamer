@@ -111,7 +111,6 @@ def create_pipeline() -> Gst.Pipeline:
     print(f"Camera configuration: {config}")
 
     homography = config.homography_matrix()
-    homography = None
     left_element = left_eye_pipeline(homography=homography)
     right_eye_pipeline(homography=homography)
 
