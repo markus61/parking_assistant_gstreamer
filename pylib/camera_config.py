@@ -38,7 +38,6 @@ class CameraConfig:
         v_fov: float = 59.0,
         focal_length_mm: float = 2.95,
         resolution: Tuple[int, int] = (1280, 720),
-        camera_height: float = 0.9,
         tilt_angle: float = 0.0,
         pan_angle: float = 37.5,
         camera_spacing: float = 0.1,
@@ -54,7 +53,6 @@ class CameraConfig:
             v_fov: Vertical field of view in degrees (default: 59.0)
             focal_length_mm: Camera focal length in mm (default: 2.95)
             resolution: Image resolution (width, height) in pixels (default: 1280x720)
-            camera_height: Height from ground in meters (default: 0.9)
             tilt_angle: Vertical tilt in degrees, 0=horizontal (default: 0.0)
             pan_angle: Horizontal pan outward in degrees (default: 37.5)
             camera_spacing: Distance between cameras in meters (default: 0.1)
@@ -69,49 +67,18 @@ class CameraConfig:
         self.resolution: Tuple[int, int] = resolution
 
         # Physical installation (configurable)
-        self.camera_height: float = camera_height
         self.tilt_angle: float = tilt_angle
         self.pan_angle: float = pan_angle
         self.camera_spacing: float = camera_spacing
 
         # Scene parameters (configurable)
-        self.distance_to_wall: float = distance_to_wall
+        self.distance_to_object_plane: float = distance_to_wall
 
         # Calibration reference
         self.reference_object_size: float = reference_object_size
 
         # Perspective correction control
         self.enable_perspective_correction: bool = enable_perspective_correction
-
-    def compute_focal_length_pixels(self) -> Tuple[float, float]:
-        """
-        Compute focal length in pixels from FOV and resolution.
-
-        Returns:
-            Tuple of (fx, fy) focal lengths in pixels
-        """
-        width, height = self.resolution
-
-        # fx = (width / 2) / tan(h_fov / 2)
-        fx = (width / 2.0) / math.tan(math.radians(self.h_fov / 2.0))
-
-        # fy = (height / 2) / tan(v_fov / 2)
-        fy = (height / 2.0) / math.tan(math.radians(self.v_fov / 2.0))
-
-        return (fx, fy)
-
-    def compute_principal_point(self) -> Tuple[float, float]:
-        """
-        Compute principal point (optical center) in pixels.
-        Typically at image center unless there's optical offset.
-
-        Returns:
-            Tuple of (cx, cy) principal point coordinates in pixels
-        """
-        width, height = self.resolution
-        cx = width / 2.0
-        cy = height / 2.0
-        return (cx, cy)
 
     def compute_homography_matrix(self, camera_side: str) -> list:
         """
@@ -185,5 +152,5 @@ class CameraConfig:
             f"CameraConfig(h_fov={self.h_fov}°, v_fov={self.v_fov}°, "
             f"resolution={self.resolution}, "
             f"pan_angle={self.pan_angle}°, spacing={self.camera_spacing}m, "
-            f"distance={self.distance_to_wall}m)"
+            f"distance={self.distance_to_object_plane}m)"
         )
