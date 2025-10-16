@@ -398,9 +398,10 @@ void main () {{
 
     // Homography matrix (3x3) - perspective transformation in pixel space
     mat3 H = mat3(
-        {h[0]}, {h[1]}, {h[2]},
-        {h[3]}, {h[4]}, {h[5]},
-        {h[6]}, {h[7]}, {h[8]}
+        // GLSL's mat3 constructor is column-major. We must transpose the row-major matrix.
+        {h[0]}, {h[3]}, {h[6]},  // Column 1
+        {h[1]}, {h[4]}, {h[7]},  // Column 2
+        {h[2]}, {h[5]}, {h[8]}   // Column 3
     );
 
     // Apply homography: p' = H * p (homogeneous coordinates in pixel space)

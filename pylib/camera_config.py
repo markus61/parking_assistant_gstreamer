@@ -86,7 +86,6 @@ class CameraConfig:
         cos_alpha = math.cos(alpha)
         sin_alpha = math.sin(alpha)
         cos_2_alpha = cos_alpha * cos_alpha
-        tan_alpha = math.tan(alpha)
         one_one = d * cos_alpha / efl_px
         one_three = -d * cos_alpha * cx / efl_px
         two_two = d * cos_2_alpha / efl_px
