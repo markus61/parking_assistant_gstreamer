@@ -84,17 +84,20 @@ class CameraConfig:
         alpha = math.radians(self.tilt_angle)
         efl_px = 1000 * self.focal_length_mm / 1.45
         cos_alpha = math.cos(alpha)
+        sin_alpha = math.sin(alpha)
+        cos_2_alpha = cos_alpha * cos_alpha
         tan_alpha = math.tan(alpha)
-        one_one = efl_px / (d * cos_alpha)
-        one_two = cx * tan_alpha / d
-        two_two = efl_px / d + cy * tan_alpha / d
-        two_three = cy - efl_px * tan_alpha
-        three_two = tan_alpha / d
+        one_one = d * cos_alpha / efl_px
+        one_three = -d * cos_alpha * cx / efl_px
+        two_two = d * cos_2_alpha / efl_px
+        two_three = d*(-cy*cos_2_alpha + efl_px*sin_alpha*cos_alpha) / efl_px
+        three_two = -cos_alpha * sin_alpha / efl_px
+        three_three = (efl_px * cos_2_alpha + cy * sin_alpha * cos_alpha) / efl_px    
 
         homography = [
-            one_one,  one_two, cx, 
+            one_one,  0.0, one_three, 
             0.0,  two_two, two_three,
-            0.0,  three_two, 1.0
+            0.0,  three_two, three_three
         ]
 
         return homography
