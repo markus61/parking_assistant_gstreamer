@@ -319,10 +319,10 @@ class GlShaderRotate90(Element):
     Swaps width/height - follow with capsfilter for rotated dimensions.
     Requires video/x-raw(memory:GLMemory) input.
     """
-    def __init__(self, clockwise: bool = True, distortion_k1: float = 0.0, name: str = None):
+    def __init__(self, clockwise: bool = True, name: str = None):
         super().__init__("glshader", name)
 
-        # Fragment shader for rotation with optional distortion correction
+        # Fragment shader for pure rotation
         if clockwise:
             # 90° clockwise: (x,y) -> (1-y, x)
             transform = "1.0 - v_texcoord.y, v_texcoord.x"
@@ -339,31 +339,58 @@ varying vec2 v_texcoord;
 uniform sampler2D tex;
 
 void main () {{
+    // Apply rotation
+    vec2 rotated_coord = vec2({transform});
+    gl_FragColor = texture2D(tex, rotated_coord);
+}}
+"""
+        self.element.set_property("fragment", fragment_shader)
+
+class GlShaderDistortion(Element):
+    """
+    Lens distortion correction shader.
+    Corrects barrel/pincushion distortion using radial distortion model.
+    Pass k1, k2 coefficients (negative for barrel, positive for pincushion).
+    Requires video/x-raw(memory:GLMemory) input.
+    """
+    def __init__(self, k1: float = 0.0, k2: float = 0.0, name: str = None):
+        super().__init__("glshader", name)
+
+        fragment_shader = f"""
+#version 100
+#ifdef GL_ES
+precision highp float;
+#endif
+varying vec2 v_texcoord;
+uniform sampler2D tex;
+
+void main () {{
     vec2 uv = v_texcoord;
 
-    // Apply barrel distortion correction BEFORE rotation
-    float k1 = {distortion_k1};
-    if (k1 != 0.0) {{
-        // Center coordinates
+    // Distortion coefficients
+    float k1 = {k1};
+    float k2 = {k2};
+
+    if (k1 != 0.0 || k2 != 0.0) {{
+        // Center coordinates (move origin to image center)
         vec2 centered = uv - 0.5;
 
-        // Calculate radius squared
+        // Calculate radius squared from center
         float r2 = dot(centered, centered);
+        float r4 = r2 * r2;
 
-        // Apply distortion: new_r = r * (1 + k1*r^2)
-        float distortion = 1.0 + k1 * r2;
+        // Radial distortion model: r_corrected = r * (1 + k1*r^2 + k2*r^4)
+        float distortion_factor = 1.0 + k1 * r2 + k2 * r4;
 
-        // Apply correction
-        uv = centered * distortion + 0.5;
+        // Apply distortion correction
+        uv = centered * distortion_factor + 0.5;
     }}
 
-    // Then apply rotation
-    vec2 rotated_coord = vec2({transform});
-
-    // Sample with bounds checking
+    // Sample texture with corrected coordinates
     if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0) {{
-        gl_FragColor = texture2D(tex, rotated_coord);
+        gl_FragColor = texture2D(tex, uv);
     }} else {{
+        // Black for out-of-bounds areas
         gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
     }}
 }}
