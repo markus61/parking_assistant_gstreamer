@@ -47,7 +47,9 @@ class CameraConfig:
         camera_spacing: Optional[float] = None,
         distance_to_wall: Optional[float] = None,
         reference_object_size: Optional[float] = None,
-        enable_perspective_correction: Optional[bool] = None
+        enable_perspective_correction: Optional[bool] = None,
+        distortion_k1: Optional[float] = None,
+        distortion_k2: Optional[float] = None
     ):
         """
         Initialize camera configuration.
@@ -69,6 +71,8 @@ class CameraConfig:
             distance_to_wall: Distance to target wall in meters (default: 4.0, env: CAM_DISTANCE)
             reference_object_size: Known object size for calibration in meters (default: 0.094, env: CAM_REF_SIZE)
             enable_perspective_correction: Enable/disable perspective correction (default: True, env: CAM_PERSPECTIVE)
+            distortion_k1: Radial distortion coefficient k1 (default: -0.2, env: CAM_DISTORTION_K1)
+            distortion_k2: Radial distortion coefficient k2 (default: 0.0, env: CAM_DISTORTION_K2)
         """
         # Hardware intrinsics (fixed, rarely changed)
         self.h_fov: float = h_fov if h_fov is not None else float(os.getenv('CAM_H_FOV', '75.0'))
@@ -90,6 +94,10 @@ class CameraConfig:
 
         # Perspective correction control
         self.enable_perspective_correction: bool = enable_perspective_correction if enable_perspective_correction is not None else os.getenv('CAM_PERSPECTIVE', 'true').lower() in ('true', '1', 'yes')
+
+        # Distortion correction coefficients (disabled by default for Phase 2)
+        self.distortion_k1: float = distortion_k1 if distortion_k1 is not None else float(os.getenv('CAM_DISTORTION_K1', '0.0'))
+        self.distortion_k2: float = distortion_k2 if distortion_k2 is not None else float(os.getenv('CAM_DISTORTION_K2', '0.0'))
 
         # Calibrated pixel scale (computed after calibration)
         self._meters_per_pixel: Optional[float] = None
@@ -265,24 +273,32 @@ class CameraConfig:
         # Compute the perspective distortion factor
         tan_theta = math.tan(theta)
 
+        # For Phase 2: Use a MILD perspective correction that preserves FOV
+        # Instead of full correction (h31 = -tan(θ)), use a scaled version
+        # This partially corrects perspective while minimizing cropping
+
+        # Scale factor: 0.0 = no correction, 1.0 = full correction
+        # Using 0.3 provides some correction without severe cropping
+        correction_strength = float(os.getenv('CAM_PERSPECTIVE_STRENGTH', '0.3'))
+
+        h31 = -tan_theta * correction_strength
+
         # Texture-space homography for horizontal pan (yaw rotation)
         # This operates on normalized [0,1] coordinates, NOT pixels
         #
-        # The homography applies perspective correction:
+        # The homography applies PARTIAL perspective correction:
         #   H = [[1,    0, 0],
         #        [0,    1, 0],
         #        [h31,  0, 1]]
         #
-        # where h31 = -tan(θ) for the inverse transform
+        # where h31 = -tan(θ) * strength for the inverse transform
         # (shader samples FROM distorted TO corrected)
-
-        h31 = -tan_theta  # Negative for inverse transform
 
         # Build homography matrix (row-major order)
         homography = [
             1.0,  0.0, 0.0,  # Row 1: [1, 0, 0]
             0.0,  1.0, 0.0,  # Row 2: [0, 1, 0]
-            h31,  0.0, 1.0   # Row 3: [h31, 0, 1] - perspective term
+            h31,  0.0, 1.0   # Row 3: [h31, 0, 1] - perspective term (scaled)
         ]
 
         return homography

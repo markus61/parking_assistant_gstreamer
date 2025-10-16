@@ -9,7 +9,7 @@ from . import camera_config as cam
 pl = g.Pipeline()
 DEV = False
 
-def left_eye_pipeline(homography: list = None) -> Gst.Pad:
+def left_eye_pipeline(homography: list = None, distortion_k1: float = -0.2, distortion_k2: float = 0.0) -> Gst.Pad:
     # LEFT EYE!
     # Camera caps: DEV uses MJPEG, Rock uses raw NV12
     if DEV:
@@ -43,7 +43,7 @@ def left_eye_pipeline(homography: list = None) -> Gst.Pad:
     pl.append(rotated_caps)
 
     # Add lens distortion correction after rotation
-    distortion_correct = g.GlShaderDistortion(k1=-0.2, k2=0.0, name="distortion_left")
+    distortion_correct = g.GlShaderDistortion(k1=distortion_k1, k2=distortion_k2, name="distortion_left")
     pl.append(distortion_correct)
 
     # Add perspective correction after distortion (if homography provided)
@@ -53,7 +53,7 @@ def left_eye_pipeline(homography: list = None) -> Gst.Pad:
 
     return pl.tail
 
-def right_eye_pipeline(homography: list = None) -> Gst.Pad:
+def right_eye_pipeline(homography: list = None, distortion_k1: float = -0.2, distortion_k2: float = 0.0) -> Gst.Pad:
     # RIGHT EYE!
     right_eye = g.Camera("right_eye")
 
@@ -91,7 +91,7 @@ def right_eye_pipeline(homography: list = None) -> Gst.Pad:
     pl.append(rotated_caps)
 
     # Add lens distortion correction after rotation
-    distortion_correct = g.GlShaderDistortion(k1=-0.2, k2=0.0, name="distortion_right")
+    distortion_correct = g.GlShaderDistortion(k1=distortion_k1, k2=distortion_k2, name="distortion_right")
     pl.append(distortion_correct)
 
     # Add perspective correction after distortion (if homography provided)
@@ -115,8 +115,9 @@ def create_pipeline() -> Gst.Pipeline:
     print(f"Machine type detected: {MACHINE}, DEV={DEV}")
 
     # Camera configuration for perspective correction
+    # Phase 2: Enable perspective correction to achieve uniform pixel/meter scale
     config = cam.CameraConfig(
-        enable_perspective_correction=False  # Disable to preserve wide panoramic view
+        enable_perspective_correction=True  # Enable for uniform distance measurement
     )
     print(f"Camera configuration: {config}")
 
@@ -132,8 +133,16 @@ def create_pipeline() -> Gst.Pipeline:
         right_homography = None
         print(f"Perspective correction DISABLED")
 
-    left_element = left_eye_pipeline(homography=left_homography)
-    right = right_eye_pipeline(homography=right_homography)
+    left_element = left_eye_pipeline(
+        homography=left_homography,
+        distortion_k1=config.distortion_k1,
+        distortion_k2=config.distortion_k2
+    )
+    right = right_eye_pipeline(
+        homography=right_homography,
+        distortion_k1=config.distortion_k1,
+        distortion_k2=config.distortion_k2
+    )
 
     # DEBUG: Check dimensions after color convert
     debug2 = g.Identity("debug_2: after glupload expected=720x1280 RGBA").enable_caps_logging()
