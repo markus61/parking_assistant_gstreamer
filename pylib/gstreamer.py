@@ -340,6 +340,7 @@ uniform sampler2D tex;
 
 void main () {{
     // apply rotation
+    vec2 uv = v_texcoord;
     vec2 rotated_coord = vec2({transform});
 
     // Sample with bounds checking
