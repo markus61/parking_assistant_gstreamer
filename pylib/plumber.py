@@ -116,7 +116,7 @@ def create_pipeline() -> Gst.Pipeline:
 
     # Camera configuration for perspective correction
     config = cam.CameraConfig(
-        enable_perspective_correction=True  # Enable perspective correction
+        enable_perspective_correction=False  # Disable to preserve wide panoramic view
     )
     print(f"Camera configuration: {config}")
 
