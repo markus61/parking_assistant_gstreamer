@@ -319,7 +319,7 @@ class GlShaderRotate90(Element):
     Swaps width/height - follow with capsfilter for rotated dimensions.
     Requires video/x-raw(memory:GLMemory) input.
     """
-    def __init__(self, clockwise: bool = True, distortion_k1: float = 0.0, name: str = None):
+    def __init__(self, clockwise: bool = True, name: str = None):
         super().__init__("glshader", name)
 
         # Fragment shader for rotation with optional distortion correction
@@ -339,25 +339,7 @@ varying vec2 v_texcoord;
 uniform sampler2D tex;
 
 void main () {{
-    vec2 uv = v_texcoord;
-
-    // Apply barrel distortion correction BEFORE rotation
-    float k1 = {distortion_k1};
-    if (k1 != 0.0) {{
-        // Center coordinates
-        vec2 centered = uv - 0.5;
-
-        // Calculate radius squared
-        float r2 = dot(centered, centered);
-
-        // Apply distortion: new_r = r * (1 + k1*r^2)
-        float distortion = 1.0 + k1 * r2;
-
-        // Apply correction
-        uv = centered * distortion + 0.5;
-    }}
-
-    // Then apply rotation
+    // apply rotation
     vec2 rotated_coord = vec2({transform});
 
     // Sample with bounds checking

@@ -38,12 +38,9 @@ class CameraConfig:
         v_fov: float = 59.0,
         focal_length_mm: float = 2.95,
         resolution: Tuple[int, int] = (1280, 720),
-        tilt_angle: float = 0.0,
-        pan_angle: float = 37.5,
         camera_spacing: float = 0.1,
         distance_to_wall: float = 4.0,
-        reference_object_size: float = 0.094,
-        enable_perspective_correction: bool = True
+        tilt_angle: float = None
     ):
         """
         Initialize camera configuration.
@@ -58,7 +55,6 @@ class CameraConfig:
             camera_spacing: Distance between cameras in meters (default: 0.1)
             distance_to_wall: Distance to target wall in meters (default: 4.0)
             reference_object_size: Known object size for calibration in meters (default: 0.094)
-            enable_perspective_correction: Enable/disable perspective correction (default: True)
         """
         # Hardware intrinsics (fixed)
         self.h_fov: float = h_fov
@@ -67,69 +63,38 @@ class CameraConfig:
         self.resolution: Tuple[int, int] = resolution
 
         # Physical installation (configurable)
+        if tilt_angle is None:
+            tilt_angle = self.v_fov / 2.0  # Vertical FOV / 2
+
         self.tilt_angle: float = tilt_angle
-        self.pan_angle: float = pan_angle
         self.camera_spacing: float = camera_spacing
 
         # Scene parameters (configurable)
         self.distance_to_object_plane: float = distance_to_wall
 
-        # Calibration reference
-        self.reference_object_size: float = reference_object_size
 
-        # Perspective correction control
-        self.enable_perspective_correction: bool = enable_perspective_correction
-
-    def compute_homography_matrix(self, camera_side: str) -> list:
+    def homography_matrix(self) -> list:
         """
         Compute 3x3 homography matrix for perspective correction in texture space.
-
-        Corrects the keystone distortion caused by camera pan angle.
-        Works in normalized texture coordinates [0,1], not pixel space.
-
-        For a camera panned by angle θ viewing a frontal plane:
-        - The plane appears as a trapezoid (keystone distortion)
-        - One edge is compressed (far from camera), other expanded (near)
-        - Homography warps this back to a rectangle
-
-        Args:
-            camera_side: 'left' or 'right' to determine pan direction
-
-        Returns:
-            List of 9 floats in row-major order [h11, h12, h13, h21, h22, h23, h31, h32, h33]
-            For use directly in GL shader with normalized [0,1] texture coordinates.
-
-        Raises:
-            ValueError: If camera_side is not 'left' or 'right'
+        needs to be applied before rotation!
         """
-        if camera_side not in ['left', 'right']:
-            raise ValueError(f"camera_side must be 'left' or 'right', got '{camera_side}'")
+        d = self.distance_to_object_plane * 1000  # Convert to mm
+        cx = self.resolution[0] / 2.0  # Image center x
+        cy = self.resolution[1] / 2.0  # Image center y
+        alpha = math.radians(self.tilt_angle)
+        efl_px = 1000 * self.focal_length_mm / 1.45
+        cos_alpha = math.cos(alpha)
+        tan_alpha = math.tan(alpha)
+        one_one = efl_px / (d * cos_alpha)
+        one_two = cx * tan_alpha / d
+        two_two = efl_px / d + cy * tan_alpha / d
+        two_three = cy - efl_px * tan_alpha
+        three_two = tan_alpha / d
 
-        # Determine pan direction: left camera pans left (negative), right pans right (positive)
-        pan_sign = -1 if camera_side == 'left' else 1
-        theta = math.radians(pan_sign * self.pan_angle)
-
-        # Compute the perspective distortion factor
-        tan_theta = math.tan(theta)
-
-        # Texture-space homography for horizontal pan (yaw rotation)
-        # This operates on normalized [0,1] coordinates, NOT pixels
-        #
-        # The homography applies perspective correction:
-        #   H = [[1,    0, 0],
-        #        [0,    1, 0],
-        #        [h31,  0, 1]]
-        #
-        # where h31 = -tan(θ) for the inverse transform
-        # (shader samples FROM distorted TO corrected)
-
-        h31 = -tan_theta  # Negative for inverse transform
-
-        # Build homography matrix (row-major order)
         homography = [
-            1.0,  0.0, 0.0,  # Row 1: [1, 0, 0]
-            0.0,  1.0, 0.0,  # Row 2: [0, 1, 0]
-            h31,  0.0, 1.0   # Row 3: [h31, 0, 1] - perspective term
+            one_one,  one_two, cx, 
+            0.0,  two_two, two_three,
+            0.0,  three_two, 1.0
         ]
 
         return homography
@@ -151,6 +116,6 @@ class CameraConfig:
         return (
             f"CameraConfig(h_fov={self.h_fov}°, v_fov={self.v_fov}°, "
             f"resolution={self.resolution}, "
-            f"pan_angle={self.pan_angle}°, spacing={self.camera_spacing}m, "
+            f"tilt_angle={self.tilt_angle}°, "
             f"distance={self.distance_to_object_plane}m)"
         )

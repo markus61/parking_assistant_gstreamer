@@ -35,18 +35,17 @@ def left_eye_pipeline(homography: list = None) -> Gst.Pad:
     convert = g.GlColorConvert()
     pl.append(convert)
 
+    # Add perspective correction before rotation (if homography provided)
+    if homography:
+        perspective_correct = g.GlShaderHomography(homography=homography, name="perspective_left")
+        pl.append(perspective_correct)
+
     # Add rotation shader between mixer and sink (stays in GL memory)
-    # rotate_shader = g.GlShaderRotate90(clockwise=False, name="rotate_left")
-    rotate_shader = g.GlShaderRotate90(clockwise=False, distortion_k1=-0.2, name="rotate_left")
+    rotate_shader = g.GlShaderRotate90(clockwise=False, name="rotate_left")
     pl.append(rotate_shader)
     # After rotation, dimensions are swapped: 1280x720 → 720x1280
     rotated_caps = g.Filter("video/x-raw(memory:GLMemory),format=RGBA,width=720,height=1280", name="left_rotated_caps")
     pl.append(rotated_caps)
-
-    # Add perspective correction after rotation (if homography provided)
-    if homography:
-        perspective_correct = g.GlShaderHomography(homography=homography, name="perspective_left")
-        pl.append(perspective_correct)
 
     return pl.tail
 
@@ -80,19 +79,17 @@ def right_eye_pipeline(homography: list = None) -> Gst.Pad:
     convert = g.GlColorConvert()
     pl.append(convert)
 
-    # Add rotation shader between mixer and sink (stays in GL memory)
-    #rotate_shader = g.GlShaderRotate90(clockwise=True, name="rotate_right")
-    rotate_shader = g.GlShaderRotate90(clockwise=True, distortion_k1=-0.2, name="rotate_right")
+    # Add perspective correction before rotation (if homography provided)
+    if homography:
+        perspective_correct = g.GlShaderHomography(homography=homography, name="perspective_right")
+        pl.append(perspective_correct)
 
+    # Add rotation shader between mixer and sink (stays in GL memory)
+    rotate_shader = g.GlShaderRotate90(clockwise=True, name="rotate_right")
     pl.append(rotate_shader)
     # After rotation, dimensions are swapped: 1280x720 → 720x1280
     rotated_caps = g.Filter("video/x-raw(memory:GLMemory),format=RGBA,width=720,height=1280", name="right_rotated_caps")
     pl.append(rotated_caps)
-
-    # Add perspective correction after rotation (if homography provided)
-    if homography:
-        perspective_correct = g.GlShaderHomography(homography=homography, name="perspective_right")
-        pl.append(perspective_correct)
 
     return pl.tail
 
@@ -110,25 +107,13 @@ def create_pipeline() -> Gst.Pipeline:
     print(f"Machine type detected: {MACHINE}, DEV={DEV}")
 
     # Camera configuration for perspective correction
-    config = cam.CameraConfig(
-        enable_perspective_correction=False  # Set to True to enable correction
-    )
+    config = cam.CameraConfig()
     print(f"Camera configuration: {config}")
 
-    # Compute homography matrices for left and right cameras (if enabled)
-    if config.enable_perspective_correction:
-        left_homography = config.compute_homography_matrix('left')
-        right_homography = config.compute_homography_matrix('right')
-        print(f"Perspective correction ENABLED")
-        print(f"  Left homography: {left_homography[:3]}...")
-        print(f"  Right homography: {right_homography[:3]}...")
-    else:
-        left_homography = None
-        right_homography = None
-        print(f"Perspective correction DISABLED")
-
-    left_element = left_eye_pipeline(homography=left_homography)
-    right = right_eye_pipeline(homography=right_homography)
+    homography = config.homography_matrix()
+    homography = None
+    left_element = left_eye_pipeline(homography=homography)
+    right_eye_pipeline(homography=homography)
 
     # DEBUG: Check dimensions after color convert
     debug2 = g.Identity("debug_2: after glupload expected=720x1280 RGBA").enable_caps_logging()
