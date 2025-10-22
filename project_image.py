@@ -127,45 +127,22 @@ print(f"Image dimensions: {width}x{height}")
 #               [0.1, 1, 0],
 #              [0.001, 0.001, 1]])
 
-clockwise = False
-H = homography_matrix(width, height, clockwise)
+H = homography_matrix(width, height, False)
 
-
-# Method 2: Manual approach using apply_homography (for educational purposes)
-# Create grid of all pixel coordinates in the image
-y_coords, x_coords = np.mgrid[0:height, 0:width]
-pixel_coords = np.column_stack([x_coords.ravel(), y_coords.ravel()])  # (N, 2)
-
-# Apply homography to all pixel coordinates
-#projected_coords = apply_homography(pixel_coords, H)
 
 # Get corner points for visualization
 corners_original = np.array([[0, 0], [width-1, 0], [width-1, height-1], [0, height-1], [0, 0]])
 corners_projected = apply_homography(corners_original, H)
-print(corners_original)
-print("----")
-print(corners_projected)
-print("----")
-print(corners_projected[:, 1])
-print("----")
-sy = set()
-for v in corners_projected[:, 1]:
-    sy.add(v)
-sy = sorted(sy)
-print(sy)
-print("----")
-m = max(sy)
-sy.remove(m)
-m = min(sy)
-sy.remove(m)
-print(sy)
+sy = np.unique(corners_projected[:, 1])
+sy = np.sort(sy)
+m = np.max(sy)
+sy = sy[sy != m]
+m = np.min(sy)
+sy = sy[sy != m]
 min_y = int(np.floor(min(sy)))
 max_y = int(np.floor(max(sy)))
-# Calculate bounding box of transformed image
 min_x = int(np.floor(corners_projected[:, 0].min()))
 max_x = int(np.ceil(corners_projected[:, 0].max()))
-#min_y = int(np.floor(corners_projected[:, 1].min()))
-#max_y = int(np.ceil(corners_projected[:, 1].max()))
 
 print(f"Projected bounds: x=[{min_x}, {max_x}], y=[{min_y}, {max_y}]")
 
@@ -194,7 +171,7 @@ warped_image = cv2.warpPerspective(sample, H_adjusted, (output_width, output_hei
 # Warped image using cv2.warpPerspective
 axes[1].imshow(warped_image)
 axes[1].set_title("Warped Image (Homography Applied)")
-axes[1].axis('off')
+axes[1].axis('on')
 
 # Overlay showing transformation of corner points
 axes[2].imshow(sample, alpha=0.5)
