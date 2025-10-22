@@ -13,33 +13,22 @@ import matplotlib.image as mpimg
 import cv2
 import math
 
-def homography_matrix(img_width, img_height):
+def homography_matrix(img_width, img_height, clockwise = True):
     """
     Compute 3x3 homography matrix for perspective correction in texture space.
     needs to be applied before rotation!
     """
-    distance_to_object_plane = 4 # meters
     resolution = (img_width, img_height)  # Use actual image resolution
-    rotation_z_degrees = 270.0  # degrees
-    pitch_angle_degrees = 32.5  # degrees
-    tilt_angle = 0.0  # degrees
+    pitch_angle_degrees = 15  # degrees
     focal_length_mm = 2.95  # Focal length in mm
 
-    d = distance_to_object_plane * 1000  # Convert to mm
+    rotation_z_degrees = 90.0  # degrees
+    if not clockwise:
+        rotation_z_degrees = 270.0  # degrees
+
+
     cx = resolution[0] / 2.0  # Image center x
     cy = resolution[1] / 2.0  # Image center y
-    alpha = math.radians(tilt_angle)
-    efl_px = 1000 * focal_length_mm / 1.45
-    cos_alpha = math.cos(alpha)
-
-
-    tan_alpha = math.tan(alpha)
-    one_one = efl_px / (d * cos_alpha)
-    one_two = cx * tan_alpha / d
-    two_two = efl_px / d + cy * tan_alpha / d
-    two_three = cy - efl_px * tan_alpha
-    three_two = tan_alpha / d
-
     # prepare the rotaion
     rotation_z_radians = math.radians(rotation_z_degrees)
     pitch_radians = math.radians(pitch_angle_degrees)
@@ -78,10 +67,16 @@ def homography_matrix(img_width, img_height):
         [0.0,           sin_pitch / focal_length_px, cos_pitch]
     ])
 
-    # Translate to apply rotation around BOTTOM CENTER of image (not center)
-    # Bottom edge is at y = img_height
+    # Calculate pivot point (where camera optical axis intersects the image plane)
+    # pivot_x is always at horizontal center
+    # pivot_y depends on pitch angle and focal length
+    # When pitch = 0, pivot is at cy (image center)
+    # When pitch = FOV_vertical/2, pivot is at img_height (bottom edge)
+    # Formula: pivot_y = cy + focal_length_px * tan(pitch)
+
     pivot_x = cx
-    pivot_y = img_height  # Bottom of image
+    tan_pitch = math.tan(pitch_radians)
+    pivot_y = cy + focal_length_px * tan_pitch
 
     translate_to_origin = np.array([
         [1.0, 0.0, -pivot_x],
@@ -96,14 +91,14 @@ def homography_matrix(img_width, img_height):
     ])
 
     # Combine: translate to origin -> pitch correction -> translate back
-    pitch_transform = translate_back @ pitch_matrix @ translate_to_origin
+    matrix = translate_back @ pitch_matrix @ translate_to_origin
 
     # Stage 3: Combine rotation and pitch
     # Order: pitch correction first, then rotation
     # This undoes the physical transformations in reverse order
-    combined_transform = rotation_matrix @ pitch_transform
+    matrix = rotation_matrix @ matrix
 
-    return combined_transform
+    return matrix
 
 
 def apply_homography(points, H):
@@ -132,7 +127,8 @@ print(f"Image dimensions: {width}x{height}")
 #               [0.1, 1, 0],
 #              [0.001, 0.001, 1]])
 
-H = homography_matrix(width, height)
+clockwise = False
+H = homography_matrix(width, height, clockwise)
 
 
 # Method 2: Manual approach using apply_homography (for educational purposes)
@@ -146,44 +142,32 @@ pixel_coords = np.column_stack([x_coords.ravel(), y_coords.ravel()])  # (N, 2)
 # Get corner points for visualization
 corners_original = np.array([[0, 0], [width-1, 0], [width-1, height-1], [0, height-1], [0, 0]])
 corners_projected = apply_homography(corners_original, H)
-
+print(corners_original)
+print("----")
+print(corners_projected)
+print("----")
+print(corners_projected[:, 1])
+print("----")
+sy = set()
+for v in corners_projected[:, 1]:
+    sy.add(v)
+sy = sorted(sy)
+print(sy)
+print("----")
+m = max(sy)
+sy.remove(m)
+m = min(sy)
+sy.remove(m)
+print(sy)
+min_y = int(np.floor(min(sy)))
+max_y = int(np.floor(max(sy)))
 # Calculate bounding box of transformed image
 min_x = int(np.floor(corners_projected[:, 0].min()))
 max_x = int(np.ceil(corners_projected[:, 0].max()))
-min_y = int(np.floor(corners_projected[:, 1].min()))
-max_y = int(np.ceil(corners_projected[:, 1].max()))
+#min_y = int(np.floor(corners_projected[:, 1].min()))
+#max_y = int(np.ceil(corners_projected[:, 1].max()))
 
 print(f"Projected bounds: x=[{min_x}, {max_x}], y=[{min_y}, {max_y}]")
-print(f"Corner 0 (top-left): {corners_projected[0]}")
-print(f"Corner 1 (top-right): {corners_projected[1]}")
-print(f"Corner 2 (bottom-right): {corners_projected[2]}")
-print(f"Corner 3 (bottom-left): {corners_projected[3]}")
-
-# Calculate all four edge lengths to find which is the "near" edge (unchanged by perspective)
-edge_01_len = np.sqrt((corners_projected[1][0] - corners_projected[0][0])**2 +
-                      (corners_projected[1][1] - corners_projected[0][1])**2)
-edge_12_len = np.sqrt((corners_projected[2][0] - corners_projected[1][0])**2 +
-                      (corners_projected[2][1] - corners_projected[1][1])**2)
-edge_23_len = np.sqrt((corners_projected[3][0] - corners_projected[2][0])**2 +
-                      (corners_projected[3][1] - corners_projected[2][1])**2)
-edge_30_len = np.sqrt((corners_projected[0][0] - corners_projected[3][0])**2 +
-                      (corners_projected[0][1] - corners_projected[3][1])**2)
-
-print(f"Edge 0-1 length: {edge_01_len}")
-print(f"Edge 1-2 length: {edge_12_len}")
-print(f"Edge 2-3 length: {edge_23_len}")
-print(f"Edge 3-0 length: {edge_30_len}")
-
-# The trapezoid should have two parallel edges with different lengths
-# The shorter edge is the "near" edge (unchanged by perspective)
-# Find the shortest edge - that's our reference for cropping
-edges = [(0, 1, edge_01_len), (1, 2, edge_12_len), (2, 3, edge_23_len), (3, 0, edge_30_len)]
-shortest_edge = min(edges, key=lambda x: x[2])
-print(f"Shortest edge: {shortest_edge[0]}-{shortest_edge[1]} with length {shortest_edge[2]}")
-
-# Use the shortest edge to determine output width
-# The shortest edge defines the narrowest part - use that as output width
-near_edge_width = int(np.ceil(shortest_edge[2]))
 
 # Adjust homography to shift everything into visible canvas
 translation_matrix = np.array([[1, 0, -min_x],
@@ -191,8 +175,8 @@ translation_matrix = np.array([[1, 0, -min_x],
                                 [0, 0, 1]])
 H_adjusted = translation_matrix @ H
 
-# Calculate output dimensions - use the near edge width to crop black triangles
-output_width = near_edge_width
+# Calculate output dimensions from bounding box
+output_width = max_x - min_x
 output_height = max_y - min_y
 
 # --- Plot ---
