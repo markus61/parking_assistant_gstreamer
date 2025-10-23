@@ -393,7 +393,7 @@ void main() {{
     vec3 transformed = u_homography * homogeneous_coord;
     
     // Perspective divide (convert from homogeneous to Cartesian)
-    vec2 source_coord = transformed.xy / transformed.z;
+    //vec2 source_coord = transformed.xy / transformed.z;
     
     // Check if source coordinate is within valid range [0, 1]
     if (source_coord.x < 0.0 || source_coord.x > 1.0 ||
