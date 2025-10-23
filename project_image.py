@@ -7,154 +7,14 @@ Original file is located at
     https://colab.research.google.com/drive/1Z_gBLaNOzpgvCkXWAUNcrujhLhR2j47H
 """
 
-import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import cv2
-import math
-
-def homography_matrix(img_width, img_height, clockwise = True):
-    """
-    Compute 3x3 homography matrix for perspective correction in texture space.
-    needs to be applied before rotation!
-    """
-    resolution = (img_width, img_height)  # Use actual image resolution
-    pitch_angle_degrees = 15  # degrees
-    focal_length_mm = 2.95  # Focal length in mm
-
-    rotation_z_degrees = 90.0  # degrees
-    if not clockwise:
-        rotation_z_degrees = 270.0  # degrees
-
-
-    cx = resolution[0] / 2.0  # Image center x
-    cy = resolution[1] / 2.0  # Image center y
-    # prepare the rotaion
-    rotation_z_radians = math.radians(rotation_z_degrees)
-    pitch_radians = math.radians(pitch_angle_degrees)
-    cx = img_width / 2.0   # Image center x
-    cy = img_height / 2.0  # Image center y
-    cos_z = math.cos(rotation_z_radians)
-    sin_z = math.sin(rotation_z_radians)
-
-
-    rotation_matrix = np.array([
-        [cos_z, -sin_z, cx - cos_z * cx + sin_z * cy],
-        [sin_z,  cos_z, cy - sin_z * cx - cos_z * cy],
-        [0.0,    0.0,   1.0]
-    ])
-
-    # Stage 2: Pitch correction (camera tilted upward)
-    # When camera tilts upward, we need inverse perspective transformation
-    # Key insight: bottom edge (y=height) should remain unchanged (ground plane at camera)
-    # Top edge (y=0) should widen (far distance)
-    # Pivot point is at BOTTOM center of image, not image center
-
-    # Calculate focal length in pixels
-    pixel_pitch_um = 1.45  # micrometers
-    focal_length_px = (focal_length_mm * 1000.0) / pixel_pitch_um
-
-    # Pitch correction homography
-    # For upward tilt: bottom of image = near (unchanged), top of image = far (widens)
-    cos_pitch = math.cos(pitch_radians)
-    sin_pitch = math.sin(pitch_radians)
-
-    # Perspective transformation for pitch around horizontal axis (x-axis rotation in image space)
-    # This is the inverse perspective transformation
-    pitch_matrix = np.array([
-        [1.0,  0.0,                         0.0],
-        [0.0,           cos_pitch,                -sin_pitch * focal_length_px],
-        [0.0,           sin_pitch / focal_length_px, cos_pitch]
-    ])
-
-    # Calculate pivot point (where camera optical axis intersects the image plane)
-    # pivot_x is always at horizontal center
-    # pivot_y depends on pitch angle and focal length
-    # When pitch = 0, pivot is at cy (image center)
-    # When pitch = FOV_vertical/2, pivot is at img_height (bottom edge)
-    # Formula: pivot_y = cy + focal_length_px * tan(pitch)
-
-    pivot_x = cx
-    tan_pitch = math.tan(pitch_radians)
-    pivot_y = cy + focal_length_px * tan_pitch
-
-    translate_to_origin = np.array([
-        [1.0, 0.0, -pivot_x],
-        [0.0, 1.0, -pivot_y],
-        [0.0, 0.0, 1.0]
-    ])
-
-    translate_back = np.array([
-        [1.0, 0.0, pivot_x],
-        [0.0, 1.0, pivot_y],
-        [0.0, 0.0, 1.0]
-    ])
-
-    # Combine: translate to origin -> pitch correction -> translate back
-    matrix = translate_back @ pitch_matrix @ translate_to_origin
-
-    # Stage 3: Combine rotation and pitch
-    # Order: pitch correction first, then rotation
-    # This undoes the physical transformations in reverse order
-    matrix = rotation_matrix @ matrix
-
-    return matrix
-
-
-def apply_homography(points, H):
-    """
-    Apply projective transformation (homography).
-    points: (N,2) array of xy coords
-    H: 3x3 homography matrix
-    """
-    pts_h = np.hstack([points, np.ones((points.shape[0],1))])   # (N,3)
-    warped = pts_h @ H.T                                       # (N,3)
-    warped /= warped[:,2].reshape(-1,1)                        # divide by lambda
-    return warped[:,:2]
-
+from pylib import Homography
 
 # --- load an image ---
 sample = mpimg.imread('camera.jpg')
 #monopoly = cv2.cvtColor(monopoly, cv2.COLOR_BGR2RGB)
-
-# Get image dimensions
-height, width = sample.shape[:2]
-print(f"Image dimensions: {width}x{height}")
-
-# --- Example projective matrix (warp into trapezoid) ---
-# Note: You may want to scale this homography based on image dimensions
-# H = np.array([[1, 0.2, 0],
-#               [0.1, 1, 0],
-#              [0.001, 0.001, 1]])
-
-H = homography_matrix(width, height, False)
-
-
-# Get corner points for visualization
-corners_original = np.array([[0, 0], [width-1, 0], [width-1, height-1], [0, height-1], [0, 0]])
-corners_projected = apply_homography(corners_original, H)
-sy = np.unique(corners_projected[:, 1])
-sy = np.sort(sy)
-m = np.max(sy)
-sy = sy[sy != m]
-m = np.min(sy)
-sy = sy[sy != m]
-min_y = int(np.floor(min(sy)))
-max_y = int(np.floor(max(sy)))
-min_x = int(np.floor(corners_projected[:, 0].min()))
-max_x = int(np.ceil(corners_projected[:, 0].max()))
-
-print(f"Projected bounds: x=[{min_x}, {max_x}], y=[{min_y}, {max_y}]")
-
-# Adjust homography to shift everything into visible canvas
-translation_matrix = np.array([[1, 0, -min_x],
-                                [0, 1, -min_y],
-                                [0, 0, 1]])
-H_adjusted = translation_matrix @ H
-
-# Calculate output dimensions from bounding box
-output_width = max_x - min_x
-output_height = max_y - min_y
 
 # --- Plot ---
 fig, axes = plt.subplots(1, 3, figsize=(18, 6))
@@ -166,8 +26,15 @@ axes[0].axis('off')
 
 
 # Method 1: Using cv2.warpPerspective (recommended - faster and handles interpolation)
-warped_image = cv2.warpPerspective(sample, H_adjusted, (output_width, output_height))
+# Get image dimensions
+height, width = sample.shape[:2]
+print(f"Image dimensions: {width}x{height}")
 
+h = Homography(width, height, pitch_angle_degrees=25, clockwise=False)
+h.translate()
+H = h.matrix
+warped_image = cv2.warpPerspective(sample, H, h.dimensions_cropped)
+print(h.matrix_glsl)
 # Warped image using cv2.warpPerspective
 axes[1].imshow(warped_image)
 axes[1].set_title("Warped Image (Homography Applied)")
@@ -175,6 +42,10 @@ axes[1].axis('on')
 
 # Overlay showing transformation of corner points
 axes[2].imshow(sample, alpha=0.5)
+
+corners_original = h.bounding_box_original
+corners_projected = h.bounding_box_projected
+
 axes[2].plot(corners_original[:, 0], corners_original[:, 1], 'b-', linewidth=2, label="Original corners")
 axes[2].plot(corners_projected[:, 0], corners_projected[:, 1], 'r-', linewidth=2, label="Projected corners")
 axes[2].set_title("Corner Transformation Overlay")

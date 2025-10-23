@@ -5,7 +5,6 @@ This module handles camera calibration parameters and computes the homography
 transformation matrices needed for perspective correction in the GStreamer pipeline.
 """
 
-import math
 from typing import Tuple
 
 
@@ -38,7 +37,7 @@ class CameraConfig:
         resolution: Tuple[int, int] = (1280, 720),
         camera_spacing: float = 0.1,
         distance_to_wall: float = 4.0,
-        tilt_angle: float = None
+        tilt_angle: float = 0.0
     ):
         """
         Initialize camera configuration for bird's-eye view.
@@ -71,38 +70,6 @@ class CameraConfig:
         # Scene parameters
         self.distance_to_object_plane: float = distance_to_wall
 
-
-    def homography_matrix(self) -> list:
-        """
-        Compute 3x3 homography matrix for bird's-eye view transformation.
-
-        This matrix maps points from the destination image (the desired top-down
-        view) back to the source image (the original camera perspective). It is
-        intended for use in a GLSL shader that performs inverse texture mapping.
-        """
-        w, h = self.resolution
-        cx, cy = w / 2.0, h / 2.0
-
-        # Focal length in pixels, calculated from physical specs.
-        fy = (self.focal_length_mm * 1000) / self.pixel_pitch_um
-
-        # Camera tilt angle in radians (0=horizontal, positive=downward)
-        alpha = math.radians(self.tilt_angle)
-        sa, ca = math.sin(alpha), math.cos(alpha)
-
-        # Camera height in meters (distance to the object plane)
-        H = self.distance_to_object_plane
-
-        # Build the homography matrix H that maps destination (bird's-eye)
-        # coordinates back to source (perspective) coordinates.
-
-        homography = [
-            1.0, 0.0,     -cx,
-            0.0, sa / fy, cy - (H * ca) / fy,
-            0.0, ca / H,  sa
-        ]
-
-        return homography
 
     def __repr__(self) -> str:
         """String representation of camera configuration."""

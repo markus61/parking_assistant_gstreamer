@@ -3,6 +3,7 @@ import gi
 gi.require_version("Gst", "1.0")
 from gi.repository import Gst # type: ignore
 
+from .homography import Homography
 from . import gstreamer as g
 from . import camera_config as cam
 
@@ -36,12 +37,11 @@ def left_eye_pipeline() -> Gst.Pad:
     pl.append(convert)
 
     # Add perspective correction before rotation (same for both cameras)
-    perspective_correct = g.GlShaderHomography(name="perspective_left")
+    h=Homography(1280, 720, pitch_angle_degrees=25, clockwise=False)
+    h.translate()
+    perspective_correct = g.GlShaderHomography(name="perspective_left", matrix=h.matrix_list)
     pl.append(perspective_correct)
 
-    # Add rotation shader between mixer and sink (stays in GL memory)
-    rotate_shader = g.GlShaderRotate90(clockwise=False, name="rotate_left")
-    pl.append(rotate_shader)
     # After rotation, dimensions are swapped: 1280x720 → 720x1280
     rotated_caps = g.Filter("video/x-raw(memory:GLMemory),format=RGBA,width=720,height=1280", name="left_rotated_caps")
     pl.append(rotated_caps)
@@ -79,13 +79,11 @@ def right_eye_pipeline() -> Gst.Pad:
     pl.append(convert)
 
     # Add perspective correction before rotation (same for both cameras)
-    perspective_correct = g.GlShaderHomography(name="perspective_right")
+    h=Homography(1280, 720, pitch_angle_degrees=25, clockwise=True)
+    h.translate()
+    perspective_correct = g.GlShaderHomography(name="perspective_right", matrix=h.matrix_list)
     pl.append(perspective_correct)
 
-    # Add rotation shader between mixer and sink (stays in GL memory)
-    rotate_shader = g.GlShaderRotate90(clockwise=True, name="rotate_right")
-    pl.append(rotate_shader)
-    # After rotation, dimensions are swapped: 1280x720 → 720x1280
     rotated_caps = g.Filter("video/x-raw(memory:GLMemory),format=RGBA,width=720,height=1280", name="right_rotated_caps")
     pl.append(rotated_caps)
 

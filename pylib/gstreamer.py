@@ -362,12 +362,11 @@ class GlShaderHomography(Element):
     Gets camera configuration internally and converts shader to use pixel coordinates.
     Requires video/x-raw(memory:GLMemory) input.
     """
-    def __init__(self, name: str = None):
+    def __init__(self, name: str = "", matrix: list=[]):
         super().__init__("glshader", name)
 
         # Get camera configuration and compute homography matrix
         config = camera_config.CameraConfig()
-        homography = config.homography_matrix()
 
         # Get image dimensions
         width = config.resolution[0]
@@ -377,10 +376,7 @@ class GlShaderHomography(Element):
         logger.info(f"GlShaderHomography: resolution={width}x{height}")
         logger.info(f"GlShaderHomography: tilt_angle={config.tilt_angle}°")
         logger.info(f"GlShaderHomography: distance={config.distance_to_object_plane}m")
-        logger.info(f"GlShaderHomography matrix:\n  [{homography[0]:.6f}, {homography[1]:.6f}, {homography[2]:.6f}]\n  [{homography[3]:.6f}, {homography[4]:.6f}, {homography[5]:.6f}]\n  [{homography[6]:.6f}, {homography[7]:.6f}, {homography[8]:.6f}]")
-
-        # Unpack homography matrix elements for shader
-        h = homography
+        logger.info(f"GlShaderHomography matrix:\n  [{matrix[0]:.6f}, {matrix[1]:.6f}, {matrix[2]:.6f}]\n  [{matrix[3]:.6f}, {matrix[4]:.6f}, {matrix[5]:.6f}]\n  [{matrix[6]:.6f}, {matrix[7]:.6f}, {matrix[8]:.6f}]")
 
         fragment_shader = f"""
 #version 100
@@ -399,9 +395,9 @@ void main () {{
     // Homography matrix (3x3) - perspective transformation in pixel space
     mat3 H = mat3(
         // GLSL's mat3 constructor is column-major. We must transpose the row-major matrix.
-        {h[0]}, {h[3]}, {h[6]},  // Column 1
-        {h[1]}, {h[4]}, {h[7]},  // Column 2
-        {h[2]}, {h[5]}, {h[8]}   // Column 3
+        {matrix[0]}, {matrix[3]}, {matrix[6]},  // Column 1
+        {matrix[1]}, {matrix[4]}, {matrix[7]},  // Column 2
+        {matrix[2]}, {matrix[5]}, {matrix[8]}   // Column 3
     );
 
     // Apply homography: p' = H * p (homogeneous coordinates in pixel space)
