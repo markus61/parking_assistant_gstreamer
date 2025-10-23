@@ -39,7 +39,7 @@ def left_eye_pipeline() -> Gst.Pad:
     # Add perspective correction before rotation (same for both cameras)
     h=Homography(1280, 720, pitch_angle_degrees=25, clockwise=False)
     h.translate()
-    perspective_correct = g.GlShaderWarpPerspective(name="perspective_left", matrix=h.matrix.T.flatten().tolist())
+    perspective_correct = g.GlShaderWarpPerspective(name="perspective_left", matrix=h.matrix.flatten().tolist())
     #perspective_correct = g.GlShaderHomography(name="perspective_left", matrix=h.matrix_list)
     pl.append(perspective_correct)
 
@@ -83,7 +83,7 @@ def right_eye_pipeline() -> Gst.Pad:
     h=Homography(1280, 720, pitch_angle_degrees=25, clockwise=True)
     h.translate()
     
-    perspective_correct = g.GlShaderWarpPerspective(name="perspective_right", matrix=h.matrix.T.flatten().tolist())
+    perspective_correct = g.GlShaderWarpPerspective(name="perspective_right", matrix=h.matrix.flatten().tolist())
     # perspective_correct = g.GlShaderHomography(name="perspective_right", matrix=h.matrix.T.flatten().tolist())
     pl.append(perspective_correct)
 
