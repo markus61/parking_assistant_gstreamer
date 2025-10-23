@@ -353,6 +353,60 @@ void main () {{
 }}
 """
         self.element.set_property("fragment", fragment_shader)
+class GlShaderWarpPerspective(Element):
+    """
+    Applies 2D perspective transformation using homography matrix.
+    Corrects keystone distortion from camera tilt angles.
+    Homography transforms perspective view to orthographic projection.
+    Requires video/x-raw(memory:GLMemory) input.
+    """
+    def __init__(self, name: str = "", matrix: list=[]):
+        super().__init__("glshader", name)
+
+        fragment_shader = f"""
+#version 330 core
+
+uniform sampler2D u_texture;
+uniform mat3 u_homography;  // Column-major homography matrix
+
+in vec2 v_texcoord;
+out vec4 fragColor;
+
+void main() {{
+    // Homography matrix (3x3) - perspective transformation in pixel space
+    u_homography = mat3(
+        // GLSL's mat3 constructor is column-major. We must transpose the row-major matrix.
+        {matrix[0]}, {matrix[3]}, {matrix[6]},  // Column 1
+        {matrix[1]}, {matrix[4]}, {matrix[7]},  // Column 2
+        {matrix[2]}, {matrix[5]}, {matrix[8]}   // Column 3
+    );
+
+    // Convert texture coordinates to pixel coordinates
+    // OpenGL texture coords are [0,1], need to match image coordinates
+    vec2 pixel_coord = v_texcoord;
+    
+    // Apply homography transformation (forward mapping)
+    // For warpPerspective, we need INVERSE mapping:
+    // Find where this output pixel came from in the source image
+    
+    vec3 homogeneous_coord = vec3(pixel_coord, 1.0);
+    vec3 transformed = u_homography * homogeneous_coord;
+    
+    // Perspective divide (convert from homogeneous to Cartesian)
+    vec2 source_coord = transformed.xy / transformed.z;
+    
+    // Check if source coordinate is within valid range [0, 1]
+    if (source_coord.x < 0.0 || source_coord.x > 1.0 ||
+        source_coord.y < 0.0 || source_coord.y > 1.0) {{
+        // Outside source image - return black
+        fragColor = vec4(0.0, 0.0, 0.0, 1.0);
+    }} else {{
+        // Sample from source texture
+        fragColor = texture(u_texture, source_coord);
+    }}
+}}
+        
+"""
 
 class GlShaderHomography(Element):
     """

@@ -39,7 +39,8 @@ def left_eye_pipeline() -> Gst.Pad:
     # Add perspective correction before rotation (same for both cameras)
     h=Homography(1280, 720, pitch_angle_degrees=25, clockwise=False)
     h.translate()
-    perspective_correct = g.GlShaderHomography(name="perspective_left", matrix=h.matrix_list)
+    perspective_correct = g.GlShaderWarpPerspective(name="perspective_left", matrix=h.matrix.T.flatten().tolist())
+    #perspective_correct = g.GlShaderHomography(name="perspective_left", matrix=h.matrix_list)
     pl.append(perspective_correct)
 
     # After rotation, dimensions are swapped: 1280x720 → 720x1280
@@ -81,7 +82,9 @@ def right_eye_pipeline() -> Gst.Pad:
     # Add perspective correction before rotation (same for both cameras)
     h=Homography(1280, 720, pitch_angle_degrees=25, clockwise=True)
     h.translate()
-    perspective_correct = g.GlShaderHomography(name="perspective_right", matrix=h.matrix.T.flatten().tolist())
+    
+    perspective_correct = g.GlShaderWarpPerspective(name="perspective_right", matrix=h.matrix.T.flatten().tolist())
+    # perspective_correct = g.GlShaderHomography(name="perspective_right", matrix=h.matrix.T.flatten().tolist())
     pl.append(perspective_correct)
 
     rotated_caps = g.Filter("video/x-raw(memory:GLMemory),format=RGBA,width=720,height=1280", name="right_rotated_caps")
