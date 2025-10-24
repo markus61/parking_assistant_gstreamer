@@ -42,7 +42,9 @@ def left_eye_pipeline() -> Gst.Pad:
     h.camera_distance=4
     h.image_distance=5
     h.rotation=90.0
-    perspective_correct = g.GlShaderWarpPerspective(name="perspective_left", matrix=h.matrix_normalized.T.flatten().tolist())
+    # We need the INVERSE matrix for the shader.
+    H_inv = np.linalg.inv(h.matrix)
+    perspective_correct = g.GlShaderWarpPerspective(name="perspective_left", matrix=H_inv.T.flatten().tolist())
     #perspective_correct = g.GlShaderHomography(name="perspective_left", matrix=h.matrix_list)
     pl.append(perspective_correct)
 
@@ -87,7 +89,9 @@ def right_eye_pipeline() -> Gst.Pad:
     h.camera_distance=4
     h.image_distance=5
     h.rotation=-90.0
-    perspective_correct = g.GlShaderWarpPerspective(name="perspective_right", matrix=h.matrix_normalized.T.flatten().tolist())
+    # We need the INVERSE matrix for the shader.
+    H_inv = np.linalg.inv(h.matrix)
+    perspective_correct = g.GlShaderWarpPerspective(name="perspective_right", matrix=H_inv.T.flatten().tolist())
     # perspective_correct = g.GlShaderHomography(name="perspective_right", matrix=h.matrix.T.flatten().tolist())
     pl.append(perspective_correct)
 

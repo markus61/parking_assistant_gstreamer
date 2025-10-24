@@ -410,49 +410,33 @@ class GlShaderWarpPerspective(Element):
         super().__init__("glshader", name)
 
         fragment_shader = f"""
-#version 330 core
-
-uniform sampler2D u_texture;
-uniform mat3 u_homography;  // Column-major homography matrix
-
+#version 100
+#ifdef GL_ES
+precision mediump float;
+#endif
+uniform sampler2D tex;
+uniform mat3 H_inv;
 in vec2 v_texcoord;
-out vec4 fragColor;
 
 void main() {{
-    // Homography matrix (3x3) - perspective transformation in pixel space
-    u_homography = mat3(
-        // GLSL's mat3 constructor is column-major. We must transpose the row-major matrix.
-        {matrix[0]}, {matrix[3]}, {matrix[6]},  // Column 1
-        {matrix[1]}, {matrix[4]}, {matrix[7]},  // Column 2
-        {matrix[2]}, {matrix[5]}, {matrix[8]}   // Column 3
-    );
+    // Apply INVERSE homography to find where this output pixel (v_texcoord)
+    // came from in the source texture.
+    vec3 homogeneous_coord = vec3(v_texcoord, 1.0);
+    vec3 transformed = H_inv * homogeneous_coord;
 
-    // Convert texture coordinates to pixel coordinates
-    // OpenGL texture coords are [0,1], need to match image coordinates
-    vec2 pixel_coord = v_texcoord;
-    
-    // Apply homography transformation (forward mapping)
-    // For warpPerspective, we need INVERSE mapping:
-    // Find where this output pixel came from in the source image
-    
-    vec3 homogeneous_coord = vec3(pixel_coord, 1.0);
-    vec3 transformed = u_homography * homogeneous_coord;
-    
-    // Perspective divide (convert from homogeneous to Cartesian)
+    // Perspective divide to get source texture coordinates
     vec2 source_coord = transformed.xy / transformed.z;
-    
-    // Check if source coordinate is within valid range [0, 1]
+
     if (source_coord.x < 0.0 || source_coord.x > 1.0 ||
         source_coord.y < 0.0 || source_coord.y > 1.0) {{
-        // Outside source image - return black
-        fragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); // Black for out-of-bounds
     }} else {{
-        // Sample from source texture
-        fragColor = texture(u_texture, source_coord);
+        gl_FragColor = texture2D(tex, source_coord);
     }}
 }}
-        
 """
+        self.element.set_property("fragment", fragment_shader)
+        self.element.set_property("uniforms", "H_inv: " + " ".join(str(x) for x in matrix))
 
 class GlShaderHomography(Element):
     """

@@ -106,14 +106,12 @@ class Homography2():
     @property 
     def matrix(self):
         self.r_matrix = self.z_matrix @ self.y_matrix @ self.x_matrix
-        H = np.hstack((self.r_matrix[:, :2], self.t_vec))
+        # Create a 3x3 homography matrix H = S * (R + t*n^T)
+        # where R is rotation, t is translation, S is scaling.
+        H = self.r_matrix + self.t_vec @ np.array([[0, 0, 1]], dtype=np.float32)
         S = np.diag([self.horizontal_scale, self.vertical_scale, 1.0])
         H = S @ H
-        H[1, :] *= self.vertical_scale
-        # Make square 3x3
-        H_np = np.eye(3)
-        H_np[:3, :] = H
-        return H_np
+        return H
 
     @property
     def matrix_normalized(self):
@@ -291,4 +289,3 @@ class Homography():
     @property
     def dimensions_cropped(self):
         return (self._width, self._height)
-
