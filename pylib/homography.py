@@ -48,6 +48,7 @@ class Homography():
             [sin_z,  cos_z, cy - sin_z * cx - cos_z * cy],
             [0.0,    0.0,   1.0]
         ])
+        print(f"rotattion matrix: {rotation_matrix.shape}")
 
         # Stage 2: Pitch correction (camera tilted upward)
         # When camera tilts upward, we need inverse perspective transformation
@@ -101,6 +102,7 @@ class Homography():
         # Order: pitch correction first, then rotation
         # This undoes the physical transformations in reverse order
         self.__matrix = rotation_matrix @ self.__matrix
+        self.__matrix = rotation_matrix
 
     @property
     def matrix(self):

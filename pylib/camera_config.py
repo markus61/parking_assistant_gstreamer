@@ -36,7 +36,7 @@ class CameraConfig:
         pixel_pitch_um: float = 1.45,  # Radxa 4K camera spec
         resolution: Tuple[int, int] = (1280, 720),
         camera_spacing: float = 0.1,
-        distance_to_wall: float = 4.0,
+        distance_to_wall: float = 4.0, #meters
         tilt_angle: float = 0.0
     ):
         """
@@ -62,12 +62,10 @@ class CameraConfig:
         if tilt_angle is None:
             # Default tilt to place the horizon at the top edge of the image.
             # A tilt of 0° is horizontal, 90° is looking straight down.
-            tilt_angle = self.v_fov / 2.0
-
+            tilt_angle = 0.0
         self.tilt_angle: float = tilt_angle
-        self.camera_spacing: float = camera_spacing
 
-        # Scene parameters
+        self.camera_spacing: float = camera_spacing
         self.distance_to_object_plane: float = distance_to_wall
 
 

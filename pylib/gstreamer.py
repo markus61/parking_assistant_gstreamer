@@ -353,62 +353,6 @@ void main () {{
 }}
 """
         self.element.set_property("fragment", fragment_shader)
-class GlShaderWarpPerspective(Element):
-    """
-    Applies 2D perspective transformation using homography matrix.
-    Corrects keystone distortion from camera tilt angles.
-    Homography transforms perspective view to orthographic projection.
-    Requires video/x-raw(memory:GLMemory) input.
-    """
-    def __init__(self, name: str = "", matrix: list=[]):
-        super().__init__("glshader", name)
-
-        fragment_shader = f"""
-#version 330 core
-
-uniform sampler2D u_texture;
-uniform mat3 u_homography;  // Column-major homography matrix
-
-in vec2 v_texcoord;
-out vec4 fragColor;
-
-void main() {{
-    // Homography matrix (3x3) - perspective transformation in pixel space
-    u_homography = mat3(
-        // GLSL's mat3 constructor is column-major. We must transpose the row-major matrix.
-        {matrix[0]}, {matrix[3]}, {matrix[6]},  // Column 1
-        {matrix[1]}, {matrix[4]}, {matrix[7]},  // Column 2
-        {matrix[2]}, {matrix[5]}, {matrix[8]}   // Column 3
-    );
-
-    // Convert texture coordinates to pixel coordinates
-    // OpenGL texture coords are [0,1], need to match image coordinates
-    vec2 pixel_coord = v_texcoord;
-    
-    // Apply homography transformation (forward mapping)
-    // For warpPerspective, we need INVERSE mapping:
-    // Find where this output pixel came from in the source image
-    
-    vec3 homogeneous_coord = vec3(pixel_coord, 1.0);
-    vec3 transformed = u_homography * homogeneous_coord;
-    
-    // Perspective divide (convert from homogeneous to Cartesian)
-    vec2 source_coord = transformed.xy / transformed.z;
-    
-    // Check if source coordinate is within valid range [0, 1]
-    if (source_coord.x < 0.0 || source_coord.x > 1.0 ||
-        source_coord.y < 0.0 || source_coord.y > 1.0) {{
-        // Outside source image - return black
-        fragColor = vec4(0.0, 0.0, 0.0, 1.0);
-    }} else {{
-        // Sample from source texture
-        fragColor = texture(u_texture, source_coord);
-    }}
-}}
-        
-"""
-        self.element.set_property("fragment", fragment_shader)
-
 
 class GlShaderHomography(Element):
     """
@@ -451,9 +395,9 @@ void main () {{
     // Homography matrix (3x3) - perspective transformation in pixel space
     mat3 H = mat3(
         // GLSL's mat3 constructor is column-major. We must transpose the row-major matrix.
-        {matrix[0]}, {matrix[3]}, {matrix[6]},  // Column 1
-        {matrix[1]}, {matrix[4]}, {matrix[7]},  // Column 2
-        {matrix[2]}, {matrix[5]}, {matrix[8]}   // Column 3
+        {matrix[0]}, {matrix[1]}, {matrix[2]},  // Column 1
+        {matrix[3]}, {matrix[4]}, {matrix[5]},  // Column 2
+        {matrix[6]}, {matrix[7]}, {matrix[8]}   // Column 3
     );
 
     // Apply homography: p' = H * p (homogeneous coordinates in pixel space)
@@ -465,6 +409,66 @@ void main () {{
 
     // Convert back to texture coordinates [0,1]
     vec2 corrected_uv = corrected_pixel / vec2({width}.0, {height}.0);
+
+    // Sample texture with corrected coordinates
+    if (corrected_uv.x >= 0.0 && corrected_uv.x <= 1.0 &&
+        corrected_uv.y >= 0.0 && corrected_uv.y <= 1.0) {{
+        gl_FragColor = texture2D(tex, corrected_uv);
+    }} else {{
+        // Black for out-of-bounds areas
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+    }}
+}}
+"""
+        self.element.set_property("fragment", fragment_shader)
+class GlShaderSimple(Element):
+    """
+    Applies 2D perspective transformation using homography matrix.
+    Homography transforms perspective view to orthographic projection.
+    Gets camera configuration internally and converts shader to use pixel coordinates.
+    Requires video/x-raw(memory:GLMemory) input.
+    """
+    def __init__(self, name: str = "", matrix: list=[]):
+        super().__init__("glshader", name)
+
+        # Get camera configuration and compute homography matrix
+        config = camera_config.CameraConfig()
+
+        # Get image dimensions
+        width = config.resolution[0]
+        height = config.resolution[1]
+
+        # Debug: print homography matrix and config
+        logger.info(f"GlShaderHomography: resolution={width}x{height}")
+        logger.info(f"GlShaderHomography: tilt_angle={config.tilt_angle}°")
+        logger.info(f"GlShaderHomography: distance={config.distance_to_object_plane}m")
+        logger.info(f"GlShaderHomography matrix:\n  [{matrix[0]:.6f}, {matrix[1]:.6f}, {matrix[2]:.6f}]\n  [{matrix[3]:.6f}, {matrix[4]:.6f}, {matrix[5]:.6f}]\n  [{matrix[6]:.6f}, {matrix[7]:.6f}, {matrix[8]:.6f}]")
+
+        fragment_shader = f"""
+#version 100
+#ifdef GL_ES
+precision highp float;
+#endif
+varying vec2 v_texcoord;
+uniform sampler2D tex;
+
+void main () {{
+    vec2 uv = v_texcoord;
+
+    // Homography matrix (3x3) - perspective transformation in pixel space
+    mat3 H = mat3(
+        // GLSL's mat3 constructor is column-major. We must transpose the row-major matrix.
+        {matrix[0]}, {matrix[1]}, {matrix[2]},  // Column 1
+        {matrix[3]}, {matrix[4]}, {matrix[5]},  // Column 2
+        {matrix[6]}, {matrix[7]}, {matrix[8]}   // Column 3
+    );
+
+    // Apply homography: p' = H * p (homogeneous coordinates in pixel space)
+    vec3 pixel_homogeneous = vec3(uv.x, uv.y, 1.0);
+    vec3 transformed = H * pixel_homogeneous;
+
+    // Perspective divide to convert back to 2D pixel coordinates
+    vec2 corrected_uv = transformed.xy / transformed.z;
 
     // Sample texture with corrected coordinates
     if (corrected_uv.x >= 0.0 && corrected_uv.x <= 1.0 &&
