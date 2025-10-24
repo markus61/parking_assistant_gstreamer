@@ -10,6 +10,124 @@ Original file is located at
 import numpy as np
 import math
 
+class Homography2():
+    def __init__(self):
+        self.width = 0
+        self.height = 0
+        self.pitch_r = 0.0
+        self.tilt_r = 0.0
+        self.rotation_r = 0.0
+        self.x_matrix = np.identity(3, dtype=np.float32)
+        self.y_matrix = np.identity(3, dtype=np.float32)
+        self.z_matrix = np.identity(3, dtype=np.float32)
+        self.r_matrix = np.identity(3, dtype=np.float32)                   # rotation matrix
+        self.dist_cam = 0.0                                                # distance between camera and world plane
+        self.dist_virtual = 0.0                                            # virtual distance to world plane
+        self.t_vec = np.array([[0.0], [0.0], [0.0]], dtype=np.float32)     # translation vector
+        self.vertical_scale = 1.0
+        self.horizontal_scale = 1.0
+        self._tilt_compensation = True
+    
+    def __set_translation(self):
+        tx = self.dist_cam - self.dist_virtual
+        tz = 0.0
+        if self._tilt_compensation:
+            # compensate for optical-axis shift due to pitch
+            tz = -self.dist_cam * np.tan(self.pitch_r)
+
+        self.t_vec = np.array([[tx], [0.0], [tz]])
+    
+    @property 
+    def tilt_compensation(self):
+        return self._tilt_compensation
+    @tilt_compensation.setter
+    def tilt_compensation(self, value):
+        self._tilt_compensation = value
+        self.__set_translation()
+
+    @property
+    def camera_distance(self):
+        return self.dist_cam
+
+    @camera_distance.setter
+    def camera_distance(self, value):
+        self.dist_cam = value
+        self.__set_translation()
+    
+    @property
+    def image_distance(self):
+        return self.dist_virtual
+    
+    @image_distance.setter
+    def image_distance(self, value):
+        self.dist_virtual = value
+        self.__set_translation()
+        
+    @property
+    def pitch(self):
+        return np.rad2deg(self.pitch_r)
+
+    @pitch.setter
+    def pitch(self, value):
+        self.pitch_r = np.radians(value)
+        self.x_matrix = np.array([
+            [1,             0,              0],
+            [0,  np.cos(self.pitch_r), -np.sin(self.pitch_r)],
+            [0,  np.sin(self.pitch_r),  np.cos(self.pitch_r)]
+        ], dtype=np.float32)
+        self.__set_translation()
+
+    @property
+    def tilt(self):
+        return np.rad2deg(self.tilt_r)
+
+    @tilt.setter
+    def tilt(self, value):
+        self.tilt_r = np.radians(value)
+        self.y_matrix = np.array([
+            [ np.cos(self.tilt_r),  0, np.sin(self.tilt_r)],
+            [ 0,              1,        0],
+            [-np.sin(self.tilt_r),  0, np.cos(self.tilt_r)]
+        ], dtype=np.float32)
+
+    @property
+    def rotation(self):
+        return np.rad2deg(self.rotation_r)
+
+    @rotation.setter
+    def rotation(self, value):
+        self.rotation_r = np.radians(value)
+        self.z_matrix = np.array([
+            [ np.cos(self.rotation_r), -np.sin(self.rotation_r), 0],
+            [ np.sin(self.rotation_r),  np.cos(self.rotation_r), 0],
+            [ 0,             0,            1]
+        ], dtype=np.float32)
+
+    @property 
+    def matrix(self):
+        self.r_matrix = self.z_matrix @ self.y_matrix @ self.x_matrix
+        H = np.hstack((self.r_matrix[:, :2], self.t_vec))
+        S = np.diag([self.horizontal_scale, self.vertical_scale, 1.0])
+        H = S @ H
+        H[1, :] *= self.vertical_scale
+        # Make square 3x3
+        H_np = np.eye(3)
+        H_np[:3, :] = H
+        return H_np
+
+    @property
+    def matrix_normalized(self):
+        """
+        Return normalized homography matrix (divided by bottom-right element).
+        In homogeneous coordinates, matrices are equivalent up to scalar multiplication.
+        Normalization ensures the [2,2] element is 1.0 for consistency.
+        """
+        # --- normalize ---
+        matrix = self.matrix
+        matrix /= matrix[2, 2]   # ensures bottom-right = 1 (usually redundant, but safe)
+        matrix /= np.linalg.norm(matrix)    # optional: scale so that total magnitude ≈ 1
+        return matrix
+
 class Homography():
     def __init__(self, img_width, img_height, pitch_angle_degrees=None, clockwise = None):
         self.orig_width = img_width

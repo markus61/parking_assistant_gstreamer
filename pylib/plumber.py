@@ -1,9 +1,9 @@
-
+import numpy as np
 import gi
 gi.require_version("Gst", "1.0")
 from gi.repository import Gst # type: ignore
 
-from .homography import Homography
+from .homography import Homography, Homography2
 from . import gstreamer as g
 from . import camera_config as cam
 
@@ -37,9 +37,12 @@ def left_eye_pipeline() -> Gst.Pad:
     pl.append(convert)
 
     # Add perspective correction before rotation (same for both cameras)
-    h=Homography(1280, 720, pitch_angle_degrees=25, clockwise=False)
-    h.translate()
-    perspective_correct = g.GlShaderWarpPerspective(name="perspective_left", matrix=h.matrix.flatten().tolist())
+    h=Homography2()
+    h.pitch = 15.0
+    h.camera_distance=4
+    h.image_distance=5
+    h.rotation=90.0
+    perspective_correct = g.GlShaderWarpPerspective(name="perspective_left", matrix=h.matrix_normalized.T.flatten().tolist())
     #perspective_correct = g.GlShaderHomography(name="perspective_left", matrix=h.matrix_list)
     pl.append(perspective_correct)
 
@@ -79,11 +82,12 @@ def right_eye_pipeline() -> Gst.Pad:
     convert = g.GlColorConvert()
     pl.append(convert)
 
-    # Add perspective correction before rotation (same for both cameras)
-    h=Homography(1280, 720, pitch_angle_degrees=25, clockwise=True)
-    h.translate()
-    
-    perspective_correct = g.GlShaderWarpPerspective(name="perspective_right", matrix=h.matrix.flatten().tolist())
+    h=Homography2()
+    h.pitch = 15.0
+    h.camera_distance=4
+    h.image_distance=5
+    h.rotation=-90.0
+    perspective_correct = g.GlShaderWarpPerspective(name="perspective_right", matrix=h.matrix_normalized.T.flatten().tolist())
     # perspective_correct = g.GlShaderHomography(name="perspective_right", matrix=h.matrix.T.flatten().tolist())
     pl.append(perspective_correct)
 

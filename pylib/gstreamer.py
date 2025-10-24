@@ -1,6 +1,7 @@
 import sys
 import gi
 import logging
+import numpy as np
 
 gi.require_version("GLib", "2.0")
 gi.require_version("GObject", "2.0")
@@ -18,15 +19,16 @@ Gst.init(sys.argv[1:])
 class Element():
     """Base wrapper for GStreamer elements. Provides name, src/sink pads, and linking."""
     def __init__(self, element: str, name: str):
-        self.element = Gst.ElementFactory.make(element, name)
-        self._name = self.element.get_name() if self.element else ""
+        self.element:Gst.Element = Gst.ElementFactory.make(element, name)
+        # assert self.element is not None, f"Failed to create GStreamer element: {element}"
+        self._name: str | None = self.element.get_name() if self.element else ""
         self.pipeline = None
 
     @property
-    def name(self) -> str:
+    def name(self) -> str | None:
         return self._name
     @property
-    def src(self) -> Gst.Element:
+    def src(self) -> Gst.Pad | None:
         return self.element.get_static_pad("src")
     
     @property
@@ -353,6 +355,50 @@ void main () {{
 }}
 """
         self.element.set_property("fragment", fragment_shader)
+
+class GlShaderHomography2(Element):
+    def __init__(self, name: str = "", matrix = []):
+        super().__init__("glshader", name)
+
+        shader_vert = r"""
+#version 300 es
+precision mediump float;
+in vec4 a_position;
+in vec2 a_texcoord;
+out vec2 v_texcoord;
+void main() {
+    gl_Position = a_position;
+    v_texcoord = a_texcoord;
+}
+"""
+
+        shader_frag = r"""
+#version 300 es
+precision mediump float;
+uniform sampler2D tex;
+uniform mat3 H;
+in vec2 v_texcoord;
+out vec4 fragColor;
+void main() {
+    vec3 uvw = vec3(v_texcoord, 1.0);
+    vec3 warped = H * uvw;
+    float w = warped.z;
+    vec2 new_uv = (w != 0.0) ? (warped.xy / w) : vec2(0.0);
+    new_uv = clamp(new_uv, 0.0, 1.0);
+    fragColor = texture(tex, new_uv);
+}
+"""
+        # === IMPORTANT: column-major for GLSL ===
+        # GLSL expects column-major order; glshader uses that convention.
+        # If you build H row-major (NumPy default), pass H.T.flatten().
+        H_vals = matrix.T.flatten()
+
+        # (Sampler 'tex' is bound for you; no need to set unless you changed names.)
+
+        self.element.set_property("vertex", shader_vert)
+        self.element.set_property("fragment", shader_frag)
+        self.element.set_property("uniforms", "H: " + " ".join(str(x) for x in H_vals))
+
 class GlShaderWarpPerspective(Element):
     """
     Applies 2D perspective transformation using homography matrix.
