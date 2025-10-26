@@ -391,13 +391,12 @@ void main() {
         # === IMPORTANT: column-major for GLSL ===
         # GLSL expects column-major order; glshader uses that convention.
         # If you build H row-major (NumPy default), pass H.T.flatten().
-        H_vals = matrix.T.flatten()
 
         # (Sampler 'tex' is bound for you; no need to set unless you changed names.)
 
         self.element.set_property("vertex", shader_vert)
         self.element.set_property("fragment", shader_frag)
-        self.element.set_property("uniforms", "H: " + " ".join(str(x) for x in H_vals))
+        self.element.set_property("uniforms", "H: " + " ".join(str(x) for x in matrix))
 
 class GlShaderWarpPerspective(Element):
     """
@@ -414,9 +413,9 @@ class GlShaderWarpPerspective(Element):
 #ifdef GL_ES
 precision mediump float;
 #endif
+varying vec2 v_texcoord;
 uniform sampler2D tex;
 uniform mat3 H_inv;
-in vec2 v_texcoord;
 
 void main() {{
     // Apply INVERSE homography to find where this output pixel (v_texcoord)
@@ -436,7 +435,19 @@ void main() {{
 }}
 """
         self.element.set_property("fragment", fragment_shader)
-        self.element.set_property("uniforms", "H_inv: " + " ".join(str(x) for x in matrix))
+
+        # Create GstStructure for mat3 uniform
+        # glshader expects a structure with field "m3fv" containing array of 9 floats
+        if matrix:
+            structure = Gst.Structure.new_empty("H_inv")
+            # Create a GObject.ValueArray and populate it with float values
+            # Note: ValueArray is deprecated but still functional for GStreamer interop
+            value_array = GObject.ValueArray(0)  # type: ignore
+            for val in matrix:
+                gvalue = GObject.Value(GObject.TYPE_FLOAT, float(val))
+                value_array.append(gvalue)  # type: ignore
+            structure.set_array("m3fv", value_array)
+            self.element.set_property("uniforms", structure)
 
 class GlShaderHomography(Element):
     """

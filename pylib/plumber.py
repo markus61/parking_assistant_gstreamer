@@ -45,7 +45,6 @@ def left_eye_pipeline() -> Gst.Pad:
     # We need the INVERSE matrix for the shader.
     H_inv = np.linalg.inv(h.matrix)
     perspective_correct = g.GlShaderWarpPerspective(name="perspective_left", matrix=H_inv.T.flatten().tolist())
-    #perspective_correct = g.GlShaderHomography(name="perspective_left", matrix=h.matrix_list)
     pl.append(perspective_correct)
 
     # After rotation, dimensions are swapped: 1280x720 → 720x1280
@@ -92,7 +91,6 @@ def right_eye_pipeline() -> Gst.Pad:
     # We need the INVERSE matrix for the shader.
     H_inv = np.linalg.inv(h.matrix)
     perspective_correct = g.GlShaderWarpPerspective(name="perspective_right", matrix=H_inv.T.flatten().tolist())
-    # perspective_correct = g.GlShaderHomography(name="perspective_right", matrix=h.matrix.T.flatten().tolist())
     pl.append(perspective_correct)
 
     rotated_caps = g.Filter("video/x-raw(memory:GLMemory),format=RGBA,width=720,height=1280", name="right_rotated_caps")
@@ -174,4 +172,3 @@ def create_pipeline() -> Gst.Pipeline:
         pl.append(stream_sink)
 
     return pl.pipeline
-
