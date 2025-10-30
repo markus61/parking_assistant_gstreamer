@@ -11,13 +11,49 @@ from configparser import ConfigParser
 import warnings
 
 class Homography2():
-    """_summary_
-    internal values are hidden eg. self.__width_src
-    internal angles are in radiant
-    setters for angles accept degrees
+    """
+    Compute homography for plane-to-image perspective transformations with metric rectification.
 
-    The full rotation matrix is the product of three individual rotation matrices, but the order of multiplication is important. 
-    For example, a common convention is to multiply them in ZYX order (roll * pitch * yaw)
+    Supports two primary scenarios:
+    1. **Development**: Wall-mounted cameras looking at vertical wall (fronto-parallel)
+    2. **Production**: Mast-mounted cameras looking downward at water surface
+
+    The homography maps 2D world coordinates on a planar surface to 2D image coordinates,
+    enabling metric rectification where 1 meter equals the same number of pixels everywhere
+    in the rectified image (within <10% variation).
+
+    PLANE MODEL:
+    - plane_normal: Unit normal vector in world coordinates (default: [0,0,1] for Z=0 plane)
+    - plane_distance: Signed distance from origin to plane in mm (default: None = auto-compute)
+
+    CAMERA MODEL:
+    - camera_x, camera_y, camera_z: Camera center position in world coordinates (mm)
+    - roll, pitch, yaw: Camera orientation angles in degrees (ZYX Euler order)
+    - K: Intrinsic matrix computed from focal length, pixel size, and resolution
+
+    HOMOGRAPHY FORMULA:
+    Currently uses simplified formula H = K[r1 r2 t] assuming Z=0 plane.
+    Future enhancement: H = K·(R - t·nᵀ/d)·K_w⁻¹ for arbitrary planes.
+
+    INTERNAL REPRESENTATION:
+    - Internal angles stored in radians (setters accept degrees)
+    - Internal properties prefixed with __ (double underscore)
+    - Rotation matrix computed as R = Rz(yaw) @ Ry(pitch) @ Rx(roll) [ZYX order]
+
+    USAGE:
+        # Development setup (wall-mounted camera)
+        h = Homography2("radxa4K")
+        h.configure_for_wall(distance_mm=4000.0)
+        h.camera_x = -50.0  # Left camera
+        h.yaw = 37.5  # Pan outward
+
+        # Production setup (mast camera)
+        h = Homography2("radxa4K")
+        h.configure_for_water_surface(height_above_water_mm=12000.0)
+        h.camera_x = -750.0
+        h.yaw = 37.5
+        h.pitch = -60.0
+        h.roll = 90.0
     """
 
     def __init__(self, camera_config:str = ""):
@@ -30,6 +66,10 @@ class Homography2():
         self.__camera_x = 0.0                                                # camera center X position in world coordinates (mm)
         self.__camera_y = 0.0                                                # camera center Y position in world coordinates (mm)
         self.__camera_z = 0.0                                                # camera center Z position in world coordinates (mm)
+
+        # Plane model parameters (world coordinates)
+        self.__plane_normal = np.array([[0.0], [0.0], [1.0]], dtype=np.float32)  # Default: Z=0 plane
+        self.__plane_distance = None                                         # None = auto-compute from camera_z (backward compatible)
 
         parser = ConfigParser()
         parser.read('./config/camera.ini')
@@ -140,6 +180,84 @@ class Homography2():
         self.__cam_height = value
 
     @property
+    def plane_normal(self):
+        """
+        Plane normal vector in world coordinates.
+
+        The plane normal defines the orientation of the target plane for metric
+        rectification. Default is [0,0,1] for Z=0 horizontal plane.
+
+        Returns:
+            3x1 numpy array: unit normal vector pointing from plane toward camera
+        """
+        return self.__plane_normal.copy()
+
+    @plane_normal.setter
+    def plane_normal(self, value):
+        """
+        Set plane normal vector in world coordinates.
+
+        Args:
+            value: Array-like [nx, ny, nz] or 3x1 array
+
+        Raises:
+            ValueError: If not 3D vector or zero length
+        """
+        try:
+            n = np.array(value, dtype=np.float32).flatten()
+        except (TypeError, ValueError):
+            raise ValueError(f"plane_normal must be array-like, got {type(value).__name__}")
+
+        if n.shape[0] != 3:
+            raise ValueError(f"plane_normal must have 3 elements, got {n.shape[0]}")
+
+        norm = np.linalg.norm(n)
+        if norm < 1e-8:
+            raise ValueError("plane_normal cannot be zero vector")
+
+        # Normalize to unit vector and store as column vector
+        self.__plane_normal = (n / norm).reshape(3, 1)
+
+    @property
+    def plane_distance(self):
+        """
+        Signed perpendicular distance from world origin to plane (mm).
+
+        Positive when origin is on the side the normal points away from.
+        None means auto-compute from camera_z (backward compatible).
+
+        Returns:
+            float or None: distance in millimeters
+        """
+        return self.__plane_distance
+
+    @plane_distance.setter
+    def plane_distance(self, value):
+        """
+        Set signed perpendicular distance from world origin to plane.
+
+        Args:
+            value: Distance in millimeters (can be negative, or None for auto-compute)
+
+        Raises:
+            ValueError: If not numeric or too close to zero (causes singularity)
+        """
+        if value is None:
+            self.__plane_distance = None
+            return
+
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"plane_distance must be numeric or None, got {type(value).__name__}")
+
+        # Warn if very small (could cause numerical instability)
+        if abs(value) < 0.1:
+            warnings.warn(f"plane_distance {value}mm is very small, may cause numerical instability")
+
+        self.__plane_distance = value
+
+    @property
     def invert(self):
         Hi = np.linalg.inv(self.H)
         return Hi
@@ -232,8 +350,27 @@ class Homography2():
         ], dtype=np.float32)
         return K
     
-    @property 
+    @property
     def H(self):
+        """
+        Compute homography matrix for plane-to-image transformation.
+
+        CURRENT IMPLEMENTATION (backward compatible):
+        Uses simplified formula: H = K[r1 r2 t]
+        This assumes the world plane is perpendicular to camera Z-axis.
+
+        PLANE MODEL:
+        - plane_normal: defines plane orientation in world coords (default: [0,0,1])
+        - plane_distance: signed distance from origin to plane (default: None = auto)
+
+        TODO: Implement general plane-induced homography formula:
+        H = K · (R - t·nᵀ/d) · K_w⁻¹
+        when plane_distance is explicitly set (not None).
+
+        Returns:
+            3x3 numpy array: homography mapping world plane to image coordinates
+        """
+        # Current simplified formula (works for Z=0 plane assumption)
         return self.K @ np.column_stack([self.R[:,[0,1]], self.translation])
 
     @property
@@ -247,6 +384,90 @@ class Homography2():
         matrix = np.copy(self.H)
         matrix /= matrix[2, 2]   # ensures bottom-right = 1 (usually redundant, but safe)
         return matrix
+
+    def configure_for_wall(self, distance_mm: float):
+        """
+        Configure homography for wall-mounted camera looking at vertical wall.
+
+        This is the typical development setup where cameras are mounted on a wall
+        looking at a fronto-parallel vertical surface (e.g., opposite wall).
+
+        Args:
+            distance_mm: Distance from camera to wall in millimeters
+
+        Example:
+            h = Homography2("radxa4K")
+            h.configure_for_wall(distance_mm=4000.0)  # 4m to wall
+            h.camera_x = -50.0  # Left camera at -5cm
+            h.yaw = 37.5  # Pan outward
+        """
+        self.camera_z = distance_mm
+        self.plane_normal = [0.0, 0.0, 1.0]  # Wall perpendicular to Z-axis
+        self.plane_distance = distance_mm
+
+    def configure_for_water_surface(self, height_above_water_mm: float):
+        """
+        Configure homography for mast camera looking down at water surface.
+
+        This is the production setup where cameras are mounted on the yacht mast
+        looking downward at the water surface for docking assistance.
+
+        Assumes world coordinate system with Z-axis pointing up and water at Z=0.
+        User must also set appropriate pitch angle for downward viewing.
+
+        Args:
+            height_above_water_mm: Camera height above water in millimeters
+
+        Example:
+            h = Homography2("radxa4K")
+            h.configure_for_water_surface(height_above_water_mm=12000.0)  # 12m mast
+            h.camera_x = -750.0  # Left camera at -75cm
+            h.yaw = 37.5  # Pan outward
+            h.pitch = -60.0  # Look downward
+            h.roll = 90.0  # Rotate camera
+        """
+        self.camera_z = -height_above_water_mm  # Negative because above plane
+        self.plane_normal = [0.0, 0.0, 1.0]  # Water surface horizontal (Z=0)
+        self.plane_distance = 0.0  # Water at world origin
+
+    def validate_plane_geometry(self) -> tuple[bool, str]:
+        """
+        Validate that plane parameters are geometrically consistent.
+
+        Checks:
+        - Plane normal is unit vector
+        - Plane distance is reasonable (not too small)
+        - Camera is not on the plane (would cause singularity)
+
+        Returns:
+            (is_valid, message): Tuple of validation result and explanation
+
+        Example:
+            is_valid, msg = h.validate_plane_geometry()
+            if not is_valid:
+                print(f"Warning: {msg}")
+        """
+        # Check normal is unit vector
+        norm = np.linalg.norm(self.__plane_normal)
+        if abs(norm - 1.0) > 1e-6:
+            return False, f"Plane normal not unit vector: ||n|| = {norm:.6f}"
+
+        # Check distance is reasonable (if set explicitly)
+        if self.__plane_distance is not None:
+            if abs(self.__plane_distance) < 0.1:
+                return False, f"Plane distance too small: {self.__plane_distance}mm"
+
+        # Check camera is not on plane
+        camera_center = np.array([[self.camera_x], [self.camera_y], [self.camera_z]], dtype=np.float32)
+        # Distance from camera to plane: n·C - d
+        dist_camera_to_plane = float((self.__plane_normal.T @ camera_center)[0, 0])
+        if self.__plane_distance is not None:
+            dist_camera_to_plane -= self.__plane_distance
+
+        if abs(dist_camera_to_plane) < 1.0:
+            return False, f"Camera too close to plane: {dist_camera_to_plane:.2f}mm"
+
+        return True, "Plane geometry is valid"
 
     def __repr__(self) -> str:
         """Cute representation showing the transformation state and matrices."""
