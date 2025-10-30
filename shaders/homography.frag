@@ -3,8 +3,8 @@
 varying vec2 v_texcoord;
 uniform sampler2D tex;
 
-uniform bool clamp_uv = true;
-uniform vec4 outside_color = vec4(0.0, 0.0, 1.0, 1.0);     // Python: RGBA
+uniform bool clamp_uv = true; // 1 -> clamp into [0,1], 0 -> show outside color
+uniform vec4 outside_color = vec4(0.0, 0.0, 1.0, 1.0);     // used only when clamp_uv == false
 // Mat3 as 9 individual float uniforms (column-major order)
 uniform float m00, m01, m02;
 uniform float m10, m11, m12;
@@ -13,9 +13,9 @@ uniform float m20, m21, m22;
 void main() {
     // Reconstruct mat3 from individual floats (column-major order)
     mat3 M = mat3(
-        m00, m01, m02,
-        m10, m11, m12,
-        m20, m21, m22
+        m00, m10, m20,
+        m01, m11, m21,
+        m02, m12, m22
     );
 
   // Perspective divide

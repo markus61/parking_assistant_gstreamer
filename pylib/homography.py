@@ -10,21 +10,52 @@ import numpy as np
 from configparser import ConfigParser
 import warnings
 
+# Tolerance constants for plane geometry validation
+EPS_DIST = 1.0      # Minimum distance in mm
+EPS_UNIT = 1e-6     # Unit vector tolerance
+
 class Homography2():
     """
     Compute homography for plane-to-image perspective transformations with metric rectification.
-
-    Supports two primary scenarios:
-    1. **Development**: Wall-mounted cameras looking at vertical wall (fronto-parallel)
-    2. **Production**: Mast-mounted cameras looking downward at water surface
 
     The homography maps 2D world coordinates on a planar surface to 2D image coordinates,
     enabling metric rectification where 1 meter equals the same number of pixels everywhere
     in the rectified image (within <10% variation).
 
+    AXES & PLANES:
+    - Right-handed coordinate system: +X forward, +Y right, +Z up
+    - Plane equation: n^T·X = d (unit normal n, signed distance d in mm)
+    - Base point on plane: X0 = d·n
+    - Orthonormal tangents: (u,v) constructed perpendicular to n
+    - Plane basis: B = [u | v | X0] maps plane coords → world coords
+    - Sign convention: d > 0 when origin is on the side n points away from
+
+    PLANE-INTRINSIC COORDINATES:
+    - Inputs [Xp, Yp, 1] are MILLIMETERS along (u,v) from origin X0
+    - Example: [1000, 500, 1] means 1000mm along u, 500mm along v from X0
+    - World position: X_world = u·Xp + v·Yp + X0
+    - Homography H maps these plane mm → image pixels
+
+    Example planes:
+      - Horizontal water: n=[0,0,1], d=1mm (near Z=0, normal pointing up)
+      - Vertical wall:    n=[1,0,0], d=4000mm (X=4000mm, normal pointing back)
+
+    COORDINATE SYSTEM:
+    - All world coordinates use MILLIMETERS as the base unit
+    - camera_x, camera_y, camera_z: Camera position in MILLIMETERS
+    - plane_distance: Distance from origin to plane in MILLIMETERS
+    - Homography input: [X, Y, 1] where X, Y are in MILLIMETERS
+    - Homography output: [u, v, 1] where u, v are in PIXELS
+    - Transformation: [u_px, v_px, w] = H @ [X_mm, Y_mm, 1]
+    - Final pixel coords: u_pixels = u_px/w, v_pixels = v_px/w
+
+    Note: Millimeters provide better numerical stability and consistency with
+    sensor specifications (EFL, pixel pitch). The metric rectification property
+    (uniform pixels-per-meter scale) is preserved regardless of internal units.
+
     PLANE MODEL:
     - plane_normal: Unit normal vector in world coordinates (default: [0,0,1] for Z=0 plane)
-    - plane_distance: Signed distance from origin to plane in mm (default: None = auto-compute)
+    - plane_distance: Signed distance from origin to plane in mm (default: None = legacy mode)
 
     CAMERA MODEL:
     - camera_x, camera_y, camera_z: Camera center position in world coordinates (mm)
@@ -32,8 +63,12 @@ class Homography2():
     - K: Intrinsic matrix computed from focal length, pixel size, and resolution
 
     HOMOGRAPHY FORMULA:
-    Currently uses simplified formula H = K[r1 r2 t] assuming Z=0 plane.
-    Future enhancement: H = K·(R - t·nᵀ/d)·K_w⁻¹ for arbitrary planes.
+    Always uses general plane-induced formula: H = K·(R - t·n^T/d)·B
+    - K: intrinsic matrix (mm → pixels)
+    - R: rotation matrix (world → camera orientation)
+    - t = -R·C: translation vector in camera coords
+    - n: plane unit normal, d: signed distance (must be set explicitly)
+    - B = [u | v | X0]: plane basis mapping plane mm → world mm
 
     INTERNAL REPRESENTATION:
     - Internal angles stored in radians (setters accept degrees)
@@ -43,17 +78,21 @@ class Homography2():
     USAGE:
         # Development setup (wall-mounted camera)
         h = Homography2("radxa4K")
-        h.configure_for_wall(distance_mm=4000.0)
-        h.camera_x = -50.0  # Left camera
-        h.yaw = 37.5  # Pan outward
+        h.camera_x = -50.0  # Left camera at -50mm (-5cm from center)
+        h.yaw = 37.5  # Pan outward 37.5 degrees
+
+        # Transform point: [X=1000mm (1m right), Y=0mm, Z=0]
+        import numpy as np
+        world_point = np.array([[1000.0], [0.0], [1.0]])  # X, Y in millimeters
+        uvw = h.H @ world_point
+        u, v = uvw[0,0]/uvw[2,0], uvw[1,0]/uvw[2,0]  # u, v in pixels
 
         # Production setup (mast camera)
         h = Homography2("radxa4K")
-        h.configure_for_water_surface(height_above_water_mm=12000.0)
-        h.camera_x = -750.0
-        h.yaw = 37.5
-        h.pitch = -60.0
-        h.roll = 90.0
+        h.camera_x = -750.0  # Left camera at -750mm (-75cm from center)
+        h.yaw = 37.5  # Pan outward 37.5 degrees
+        h.pitch = -60.0  # Look downward 60 degrees
+        h.roll = 90.0  # Rotate camera 90 degrees
     """
 
     def __init__(self, camera_config:str = ""):
@@ -69,7 +108,14 @@ class Homography2():
 
         # Plane model parameters (world coordinates)
         self.__plane_normal = np.array([[0.0], [0.0], [1.0]], dtype=np.float32)  # Default: Z=0 plane
-        self.__plane_distance = None                                         # None = auto-compute from camera_z (backward compatible)
+        self.__plane_distance = None                                         # Must be set explicitly
+
+        # Output window parameters (for shader-ready normalized property)
+        self.out_origin_x_mm = 0.0          # Plane X coordinate at output (0,0)
+        self.out_origin_y_mm = 0.0          # Plane Y coordinate at output (0,0)
+        self.out_scale_x_mm_per_uv = 1000.0  # Millimeters per UV unit (X direction)
+        self.out_scale_y_mm_per_uv = 1000.0  # Millimeters per UV unit (Y direction)
+        self.y_up_src = True                # GL UV convention (bottom-left origin)
 
         parser = ConfigParser()
         parser.read('./config/camera.ini')
@@ -78,7 +124,21 @@ class Homography2():
         self.__efl = float(cam_section.get('efl', '2.95'))                  # effective focal length in mm
         self.__cam_width = int(cam_section.get('width', '1280'))
         self.__cam_height = int(cam_section.get('height', '720'))
-    
+
+    def _assert_finite(self, mat: np.ndarray, name: str) -> None:
+        """
+        Check matrix contains no NaN or Inf values.
+
+        Args:
+            mat: Matrix to validate
+            name: Name for error message
+
+        Raises:
+            ValueError: If matrix contains NaN or Inf
+        """
+        if not np.all(np.isfinite(mat)):
+            raise ValueError(f"{name} contains NaN or Inf values")
+
     @property
     def translation(self):
         """
@@ -90,8 +150,16 @@ class Homography2():
         This ensures correct metric rectification where the pixel-to-meter scale
         depends on actual perpendicular distance from camera to the world plane.
 
+        UNITS: Both camera_center and translation are in MILLIMETERS.
+        The rotation matrix R is dimensionless, so it preserves units.
+
         Returns:
-            3x1 numpy array: translation vector in camera coordinates (mm)
+            3x1 numpy array: translation vector in camera coordinates (MILLIMETERS)
+
+        Example:
+            If camera is at C = [0, 0, 4000]mm (4m from wall) with no rotation,
+            then t = -R·C = [0, 0, -4000]mm in camera coordinates.
+            The scale factor becomes: fx/4000mm = 2034.48/4000 ≈ 0.51 pixels/mm
         """
         camera_center = np.array([[self.camera_x], [self.camera_y], [self.camera_z]], dtype=np.float32)
         return -self.R @ camera_center
@@ -337,8 +405,73 @@ class Homography2():
         return R
 
     @property
+    def _plane_basis(self) -> np.ndarray:
+        """
+        Compute 3x3 basis matrix B for plane parametrization.
+
+        For plane n^T·X = d with unit normal n:
+        - Chooses two orthonormal tangent vectors u, v in the plane
+        - Chooses point on plane: X0 = d·n
+        - Returns B = [u | v | X0]
+
+        The basis maps 2D plane coordinates [Xp, Yp, 1] (in mm along u,v from X0)
+        to 3D world coordinates.
+
+        Stable construction (per task.md): Choose auxiliary vector a to avoid
+        degeneracy, then u = normalize(a × n), v = n × u.
+
+        Returns:
+            3x3 numpy array: basis matrix [u | v | X0]
+        """
+        n = self.__plane_normal  # 3x1 unit normal
+
+        # Stable auxiliary vector selection (per task.md line 33)
+        if abs(n[2, 0]) < 0.9:  # If |n.z| < 0.9
+            a = np.array([[0.0], [0.0], [1.0]], dtype=np.float32)
+        else:
+            a = np.array([[1.0], [0.0], [0.0]], dtype=np.float32)
+
+        # u = normalize(a × n) - first tangent
+        u = np.cross(a.T, n.T).T.reshape(3, 1)
+        u_norm = np.linalg.norm(u)
+        if u_norm < 1e-10:
+            raise ValueError("Failed to construct plane basis: degenerate cross product")
+        u = u / u_norm
+
+        # v = n × u - second tangent (automatically orthonormal)
+        v = np.cross(n.T, u.T).T.reshape(3, 1)
+
+        # Point on plane: X0 = d·n
+        d = self.__plane_distance
+        if d is None:
+            raise ValueError("plane_distance must be set before computing plane basis")
+        X0 = d * n
+
+        # Basis matrix B = [u | v | X0]
+        B = np.column_stack([u, v, X0])
+        return B.astype(np.float32)
+
+    @property
     def K(self):
-        """Intrinsic camera matrix K"""
+        """
+        Intrinsic camera matrix K.
+
+        Computes the 3x3 intrinsic matrix from camera parameters with validation.
+
+        Returns:
+            3x3 numpy array: intrinsic matrix in pixels
+
+        Raises:
+            ValueError: If camera parameters are invalid
+        """
+        # Validate camera parameters
+        if self.__efl <= 0:
+            raise ValueError(f"efl must be positive, got {self.__efl}mm")
+        if self.__pixel_size <= 0:
+            raise ValueError(f"pixel_size must be positive, got {self.__pixel_size}mm")
+        if self.cam_width < 2 or self.cam_height < 2:
+            raise ValueError(f"cam dimensions must be ≥2, got {self.cam_width}x{self.cam_height}")
+
         fx = self.__efl / self.__pixel_size
         fy = self.__efl / self.__pixel_size
         cx = self.cam_width / 2.0
@@ -355,80 +488,213 @@ class Homography2():
         """
         Compute homography matrix for plane-to-image transformation.
 
-        CURRENT IMPLEMENTATION (backward compatible):
-        Uses simplified formula: H = K[r1 r2 t]
-        This assumes the world plane is perpendicular to camera Z-axis.
+        Maps world plane coordinates (in MILLIMETERS) to image pixel coordinates.
+
+        TRANSFORMATION:
+            [u]   [H11  H12  H13]   [X_mm]
+            [v] = [H21  H22  H23] @ [Y_mm]    where X, Y are in MILLIMETERS
+            [w]   [H31  H32  H33]   [ 1  ]
+
+            Then: u_pixels = u/w, v_pixels = v/w (in PIXELS)
+
+        IMPLEMENTATION:
+        Always uses general plane-induced homography formula: H = K·(R - t·n^T/d)·B
+        - Requires explicit plane_distance (raises ValueError if None)
+        - Inputs [Xp,Yp,1] are millimeters along plane basis (u,v) from origin X0=d·n
+        - Validates unit normal, distance, and camera-plane separation
+        - Asserts finiteness of all matrix components
 
         PLANE MODEL:
-        - plane_normal: defines plane orientation in world coords (default: [0,0,1])
-        - plane_distance: signed distance from origin to plane (default: None = auto)
-
-        TODO: Implement general plane-induced homography formula:
-        H = K · (R - t·nᵀ/d) · K_w⁻¹
-        when plane_distance is explicitly set (not None).
+        - plane_normal n: unit normal in world coords (must be set)
+        - plane_distance d: signed distance from origin to plane in mm (must be set)
+        - plane_basis B = [u | v | X0]: maps plane-intrinsic mm → world mm
 
         Returns:
-            3x3 numpy array: homography mapping world plane to image coordinates
+            3x3 numpy array: homography mapping [X_mm, Y_mm, 1] → [u_px, v_px, 1]
+
+        Raises:
+            ValueError: If plane_distance too close to zero (singularity)
+            ValueError: If result contains NaN or Inf
+
+        Example:
+            world_point = np.array([[1000.0], [0.0], [1.0]])  # 1m=1000mm, 0mm, homogeneous
+            uvw = h.H @ world_point
+            u_pixels = uvw[0,0] / uvw[2,0]  # Convert from homogeneous coords
+            v_pixels = uvw[1,0] / uvw[2,0]
         """
-        # Current simplified formula (works for Z=0 plane assumption)
-        return self.K @ np.column_stack([self.R[:,[0,1]], self.translation])
+        # Require explicit plane_distance (no legacy bypass)
+        if self.__plane_distance is None:
+            raise ValueError(
+                "plane_distance must be explicitly set. "
+                "to set valid plane geometry."
+            )
+
+        # Get and validate plane parameters
+        n = self.__plane_normal  # 3x1, unit normal in world coords
+        d = self.__plane_distance  # scalar, signed distance (mm)
+
+        # Enforce unit normal (normalize or raise per task.md line 36)
+        n_norm = np.linalg.norm(n)
+        if abs(n_norm - 1.0) > EPS_UNIT:
+            # Normalize automatically
+            n = n / n_norm
+            self.__plane_normal = n  # Update internal state
+
+        # Enforce |d| ≥ EPS_DIST (task.md line 37)
+        if abs(d) < EPS_DIST:
+            raise ValueError(
+                f"plane_distance too close to zero: {d}mm (minimum {EPS_DIST}mm). "
+                f"This causes a singularity in the homography."
+            )
+
+        # Enforce camera–plane non-incidence (task.md line 38)
+        C = np.array([[self.camera_x], [self.camera_y], [self.camera_z]], dtype=np.float32)
+        delta = float((n.T @ C)[0, 0] - d)
+        if abs(delta) < EPS_DIST:
+            raise ValueError(
+                f"Camera on or too close to plane: distance={delta:.2f}mm < {EPS_DIST}mm. "
+                f"This causes a singularity. Move camera away from plane."
+            )
+
+        # Get validated components
+        K = self.K  # Will validate internally
+        R = self.R
+        t = self.translation
+
+        # Assert finiteness of components (task.md line 39)
+        self._assert_finite(K, "Intrinsic matrix K")
+        self._assert_finite(R, "Rotation matrix R")
+        self._assert_finite(t, "Translation vector t")
+
+        # Plane basis (will validate internally)
+        B = self._plane_basis
+
+        # Assert finiteness of basis
+        self._assert_finite(B, "Plane basis B")
+
+        # General plane-induced homography: H = K·(R - t·n^T/d)·B (task.md line 28)
+        # Plane-induced term: R - (t·n^T)/d
+        plane_term = R - (t @ n.T) / d  # 3x3 matrix
+
+        # Final homography
+        H = K @ plane_term @ B
+
+        # Validate result is finite (no NaN/Inf)
+        self._assert_finite(H, "Homography matrix H")
+
+        return H.astype(np.float32)
+
+    @property
+    def H_meters(self):
+        """
+        Homography matrix for plane-to-image transformation with METER inputs.
+
+        This is a convenience property for users who prefer to work with meters
+        instead of millimeters. Mathematically equivalent to scaling the first
+        two columns of H by 1000.
+
+        TRANSFORMATION:
+            [u]   [H_meters]   [X_m]
+            [v] = [H_meters] @ [Y_m]    where X, Y are in METERS
+            [w]   [H_meters]   [ 1 ]
+
+            Then: u_pixels = u/w, v_pixels = v/w (in PIXELS)
+
+        Returns:
+            3x3 numpy array: homography mapping [X_m, Y_m, 1] → [u_px, v_px, 1]
+
+        Example:
+            world_point_m = np.array([[1.0], [0.5], [1.0]])  # 1 meter right, 0.5m up
+            uvw = h.H_meters @ world_point_m
+            u_pixels = uvw[0,0] / uvw[2,0]
+            v_pixels = uvw[1,0] / uvw[2,0]
+
+        Note: This property is provided for convenience. Internally, all
+        calculations use millimeters for better numerical stability.
+        """
+        H_mm = self.H.copy()
+        # Scale first two columns by 1000 to convert meter input to mm internally
+        H_mm[:, 0] *= 1000.0  # r1 column (X-axis)
+        H_mm[:, 1] *= 1000.0  # r2 column (Y-axis)
+        # Third column (translation) remains unchanged - it already accounts for scale
+        return H_mm
 
     @property
     def normalized(self):
         """
-        Return normalized homography matrix (divided by bottom-right element).
-        In homogeneous coordinates, matrices are equivalent up to scalar multiplication.
-        Normalization ensures the [2,2] element is 1.0 for consistency.
-        """
-        # --- normalize ---
-        matrix = np.copy(self.H)
-        matrix /= matrix[2, 2]   # ensures bottom-right = 1 (usually redundant, but safe)
-        return matrix
+        Shader-ready matrix mapping output normalized coords (0..1) → source UV (0..1).
 
-    def configure_for_wall(self, distance_mm: float):
-        """
-        Configure homography for wall-mounted camera looking at vertical wall.
+        Returns M = N_src^{-1} · H · A where:
+        - H: pixel-domain homography (mm → px) from general plane formula
+        - N_src^{-1}: converts pixels → normalized UV with optional Y-flip for GL
+        - A: converts output normalized coords (0..1) → plane-intrinsic millimeters
 
-        This is the typical development setup where cameras are mounted on a wall
-        looking at a fronto-parallel vertical surface (e.g., opposite wall).
+        The output window on the plane is defined by:
+        - out_origin_x_mm, out_origin_y_mm: plane mm at output (0,0)
+        - out_scale_x_mm_per_uv, out_scale_y_mm_per_uv: mm per 1.0 UV step
+        - y_up_src: if True, applies Y-flip for GL UV (bottom-left origin)
 
-        Args:
-            distance_mm: Distance from camera to wall in millimeters
+        Contract:
+        - Input: v_texcoord in [0,1]^2 (output normalized coordinates)
+        - Output: uv in [0,1]^2 for texture2D (source normalized UV)
+        - Format: column-major 3x3 float32 for GLSL upload
 
-        Example:
-            h = Homography2("radxa4K")
-            h.configure_for_wall(distance_mm=4000.0)  # 4m to wall
-            h.camera_x = -50.0  # Left camera at -5cm
-            h.yaw = 37.5  # Pan outward
-        """
-        self.camera_z = distance_mm
-        self.plane_normal = [0.0, 0.0, 1.0]  # Wall perpendicular to Z-axis
-        self.plane_distance = distance_mm
+        Returns:
+            3x3 numpy array (float32): shader-ready transformation matrix
 
-    def configure_for_water_surface(self, height_above_water_mm: float):
-        """
-        Configure homography for mast camera looking down at water surface.
-
-        This is the production setup where cameras are mounted on the yacht mast
-        looking downward at the water surface for docking assistance.
-
-        Assumes world coordinate system with Z-axis pointing up and water at Z=0.
-        User must also set appropriate pitch angle for downward viewing.
-
-        Args:
-            height_above_water_mm: Camera height above water in millimeters
+        Raises:
+            ValueError: If out_scale parameters are zero or non-finite
 
         Example:
-            h = Homography2("radxa4K")
-            h.configure_for_water_surface(height_above_water_mm=12000.0)  # 12m mast
-            h.camera_x = -750.0  # Left camera at -75cm
-            h.yaw = 37.5  # Pan outward
-            h.pitch = -60.0  # Look downward
-            h.roll = 90.0  # Rotate camera
+            # In shader: vec3 src_uv_h = normalized * vec3(v_texcoord, 1.0);
+            # Then: vec2 src_uv = src_uv_h.xy / src_uv_h.z;
+            # Sample: texture2D(u_texture, src_uv);
         """
-        self.camera_z = -height_above_water_mm  # Negative because above plane
-        self.plane_normal = [0.0, 0.0, 1.0]  # Water surface horizontal (Z=0)
-        self.plane_distance = 0.0  # Water at world origin
+        # Get pixel-domain homography (mm → pixels)
+        H_px = self.H
+
+        # N_src^{-1}: pixels → normalized UV
+        W = float(self.cam_width)
+        H_img = float(self.cam_height)
+
+        if self.y_up_src:
+            # GL convention: Y-flip for bottom-left origin
+            # N_src^{-1} = [[1/W, 0, 0], [0, -1/H, 1], [0, 0, 1]]
+            N_src_inv = np.array([
+                [1.0 / W,        0.0,   0.0],
+                [    0.0, -1.0 / H_img, 1.0],
+                [    0.0,        0.0,   1.0]
+            ], dtype=np.float32)
+        else:
+            # Standard UV: top-left origin
+            N_src_inv = np.diag([1.0 / W, 1.0 / H_img, 1.0]).astype(np.float32)
+
+        # A: output normalized (0..1) → plane-intrinsic mm
+        Sx = self.out_scale_x_mm_per_uv
+        Sy = self.out_scale_y_mm_per_uv
+        X0 = self.out_origin_x_mm
+        Y0 = self.out_origin_y_mm
+
+        # Validate scales
+        if not np.isfinite(Sx) or not np.isfinite(Sy):
+            raise ValueError(f"out_scale must be finite, got Sx={Sx}, Sy={Sy}")
+        if abs(Sx) < 1e-6 or abs(Sy) < 1e-6:
+            raise ValueError(f"out_scale must be != 0, got Sx={Sx}, Sy={Sy}")
+
+        # Construct A matrix
+        A = np.array([
+            [Sx,  0.0, X0],
+            [0.0,  Sy, Y0],
+            [0.0, 0.0, 1.0]
+        ], dtype=np.float32)
+
+        # M = N_src^{-1} · H · A
+        M = N_src_inv @ H_px @ A
+
+        # Validate result
+        self._assert_finite(M, "Normalized shader matrix M")
+
+        return M
 
     def validate_plane_geometry(self) -> tuple[bool, str]:
         """
@@ -447,25 +713,26 @@ class Homography2():
             if not is_valid:
                 print(f"Warning: {msg}")
         """
-        # Check normal is unit vector
+        # Check normal is unit vector (use module constant)
         norm = np.linalg.norm(self.__plane_normal)
-        if abs(norm - 1.0) > 1e-6:
-            return False, f"Plane normal not unit vector: ||n|| = {norm:.6f}"
+        if abs(norm - 1.0) > EPS_UNIT:
+            return False, f"Plane normal not unit vector: ||n||={norm:.6f} (tolerance={EPS_UNIT})"
 
-        # Check distance is reasonable (if set explicitly)
+        # Check distance is reasonable (if set explicitly, use module constant)
         if self.__plane_distance is not None:
-            if abs(self.__plane_distance) < 0.1:
-                return False, f"Plane distance too small: {self.__plane_distance}mm"
+            if abs(self.__plane_distance) < EPS_DIST:
+                return False, f"Plane distance too small: {self.__plane_distance}mm < {EPS_DIST}mm"
 
-        # Check camera is not on plane
+        # Check camera not on plane: δ = n^T·C - d
         camera_center = np.array([[self.camera_x], [self.camera_y], [self.camera_z]], dtype=np.float32)
-        # Distance from camera to plane: n·C - d
-        dist_camera_to_plane = float((self.__plane_normal.T @ camera_center)[0, 0])
-        if self.__plane_distance is not None:
-            dist_camera_to_plane -= self.__plane_distance
+        n = self.__plane_normal
+        delta = float((n.T @ camera_center)[0, 0])
 
-        if abs(dist_camera_to_plane) < 1.0:
-            return False, f"Camera too close to plane: {dist_camera_to_plane:.2f}mm"
+        if self.__plane_distance is not None:
+            delta -= self.__plane_distance
+
+        if abs(delta) < EPS_DIST:
+            return False, f"Camera on plane: distance={delta:.2f}mm < {EPS_DIST}mm (singularity)"
 
         return True, "Plane geometry is valid"
 

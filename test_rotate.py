@@ -22,29 +22,20 @@ def on_msg(bus, msg):
 
 
 def create_mat3_uniform_structure(matrix: np.ndarray) -> Gst.Structure:
-    """
-    Creates a Gst.Structure for a mat3 uniform for the glshader element.
-
-    Args:
-        matrix_data: List of 9 floats in column-major order
-
-    Returns:
-        GstStructure with 9 float fields (m00, m01, m02, m10, m11, m12, m20, m21, m22)
-    """
     matrix_data = matrix.flatten().tolist()
     if len(matrix_data) != 9:
         raise ValueError(f"matrix_data must contain exactly 9 floats, got {len(matrix_data)}")
 
-    # Create the uniforms structure with 9 individual float fields
     uniforms = Gst.Structure.new_empty("uniforms")
 
-    # Set each matrix element as an individual float uniform (column-major order)
-    # Must use explicit GObject.TYPE_FLOAT to avoid double conversion
-    uniform_names = ["m00", "m01", "m02", "m10", "m11", "m12", "m20", "m21", "m22"]
-    for name, val in zip(uniform_names, matrix_data):
+    # Map to 9 float uniforms expected by homography.frag
+    names = ["m00","m01","m02","m10","m11","m12","m20","m21","m22"]
+    for name, val in zip(names, matrix_data):
         uniforms.set_value(name, GObject.Value(GObject.TYPE_FLOAT, float(val)))
-    
-    uniforms.set_value("clamp_uv", GObject.Value(GObject.TYPE_INT, 0))
+
+    # Animation-friendly defaults
+    uniforms.set_value("clamp_uv", GObject.Value(GObject.TYPE_INT, 1))
+    # optional: uniforms.set_value("outside_color", <add if you’ve wired vec4>)
 
     return uniforms
 
@@ -56,7 +47,7 @@ Gst.init(None)
 FRAG_120 = ""
 print(getcwd())
 
-with open("./src/shaders/rotate.frag", "r") as f:
+with open("./src/shaders/homography.frag", "r") as f:
     FRAG = f.read()
 
 with open("./src/shaders/default.vert", "r") as f:
@@ -75,29 +66,25 @@ pipeline.get_state(5 * Gst.SECOND)
 pipeline.set_state(Gst.State.READY)
 
 test_src = pipeline.get_by_name("videotestsrc0")
-test_src.set_property("pattern", CIRCLE)
+test_src.set_property("pattern", TEST)
 
 warp = pipeline.get_by_name("warp")
 assert isinstance(warp, Gst.Element)
 
-H = Homography2()
-H.rotation = 0.0  # degrees
-s = uniforms_from_mat3(H.matrix)
+h = Homography2()
+h.yaw = 0.0  # degrees
+h.plane_distance = 3900.0
+h.camera_z = 4000.0  # mm
+s = uniforms_from_mat3(h.normalized)
 warp.set_property("uniforms", s )
 
 def tick():
-    H.rotation += 10.0
-    s = uniforms_from_mat3(H.matrix)
+    h.yaw += 5.0
+    s = uniforms_from_mat3(h.normalized)
     warp.set_property("uniforms", s)
-    print(H)
+    print(h)
     return True
 
-
-
-fragment = warp.get_property("fragment")  # Force property initialization
-uniforms = warp.get_property("uniforms")  # Force property initialization
-context = warp.get_property("context")  # Force GL context initialization
-shader = warp.get_property("shader")  # Force shader initialization
 
 # Bus logging (optional but handy)
 bus = pipeline.get_bus()
