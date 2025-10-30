@@ -9,8 +9,108 @@ Original file is located at
 
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
-import cv2
-from pylib import Homography
+from pylib import Homography2
+import numpy as np
+
+def simulate_fragment_shader(matrix: np.ndarray, source_image: np.ndarray, clamp_uv: bool = True, outside_color: tuple = (0.0, 0.0, 1.0, 1.0)) -> np.ndarray:
+    """
+    Simulate the fragment shader transformation from rotate.frag.
+
+    Args:
+        matrix: 3x3 homography transformation matrix
+        source_image: Input image as numpy array (H, W, C)
+        clamp_uv: If True, clamp coordinates to [0,1]. If False, use outside_color for out-of-bounds
+        outside_color: RGBA color tuple for out-of-bounds pixels (values 0.0-1.0)
+
+    Returns:
+        Transformed image as numpy array
+    """
+    height, width = source_image.shape[:2]
+
+    # Create output image
+    output_image = np.zeros_like(source_image, dtype=np.float64)
+
+    # Convert outside_color to image value range [0, 255]
+    outside_color_rgb = np.array(outside_color[:3]) * 255.0
+
+    # For each pixel in the output image
+    for y_out in range(height):
+        for x_out in range(width):
+            # Convert pixel coordinates to normalized texture coordinates [0, 1]
+            # This simulates v_texcoord in the fragment shader
+            u_norm = x_out / (width - 1) if width > 1 else 0.5
+            v_norm = y_out / (height - 1) if height > 1 else 0.5
+
+            # Create homogeneous coordinate vector (u, v, 1)
+            texcoord_homogeneous = np.array([u_norm, v_norm, 1.0])
+
+            # Apply transformation: uvw = M * vec3(v_texcoord, 1.0)
+            uvw = matrix @ texcoord_homogeneous
+
+            # Perspective divide with epsilon check to avoid division by zero
+            # float w = (abs(uvw.z) > 1e-8) ? uvw.z : 1e-8;
+            w = uvw[2] if abs(uvw[2]) > 1e-8 else 1e-8
+
+            # vec2 uv = uvw.xy / w;
+            u_transformed = uvw[0] / w
+            v_transformed = uvw[1] / w
+
+            # Handle clamping or out-of-bounds checking
+            if clamp_uv:
+                # Clamp coordinates to [0, 1]
+                u_transformed = np.clip(u_transformed, 0.0, 1.0)
+                v_transformed = np.clip(v_transformed, 0.0, 1.0)
+
+                # Convert back to pixel coordinates
+                x_src = u_transformed * (width - 1)
+                y_src = v_transformed * (height - 1)
+
+                # Bilinear interpolation for sampling
+                x0 = int(np.floor(x_src))
+                x1 = min(x0 + 1, width - 1)
+                y0 = int(np.floor(y_src))
+                y1 = min(y0 + 1, height - 1)
+
+                wx = x_src - x0
+                wy = y_src - y0
+
+                # Bilinear interpolation
+                pixel_value = (1 - wx) * (1 - wy) * source_image[y0, x0] + \
+                              wx * (1 - wy) * source_image[y0, x1] + \
+                              (1 - wx) * wy * source_image[y1, x0] + \
+                              wx * wy * source_image[y1, x1]
+
+                output_image[y_out, x_out] = pixel_value
+            else:
+                # Check if out of bounds
+                is_out_of_bounds = (u_transformed < 0.0 or u_transformed > 1.0 or
+                                   v_transformed < 0.0 or v_transformed > 1.0)
+
+                if is_out_of_bounds:
+                    # Use outside_color
+                    output_image[y_out, x_out] = outside_color_rgb
+                else:
+                    # Convert back to pixel coordinates and sample
+                    x_src = u_transformed * (width - 1)
+                    y_src = v_transformed * (height - 1)
+
+                    # Bilinear interpolation
+                    x0 = int(np.floor(x_src))
+                    x1 = min(x0 + 1, width - 1)
+                    y0 = int(np.floor(y_src))
+                    y1 = min(y0 + 1, height - 1)
+
+                    wx = x_src - x0
+                    wy = y_src - y0
+
+                    pixel_value = (1 - wx) * (1 - wy) * source_image[y0, x0] + \
+                                  wx * (1 - wy) * source_image[y0, x1] + \
+                                  (1 - wx) * wy * source_image[y1, x0] + \
+                                  wx * wy * source_image[y1, x1]
+
+                    output_image[y_out, x_out] = pixel_value
+
+    return output_image.astype(source_image.dtype)
 
 # --- load an image ---
 sample = mpimg.imread('camera.jpg')
@@ -30,24 +130,61 @@ axes[0].axis('off')
 height, width = sample.shape[:2]
 print(f"Image dimensions: {width}x{height}")
 
-h = Homography(width, height, pitch_angle_degrees=25, clockwise=False)
-h.translate()
-H = h.matrix
-warped_image = cv2.warpPerspective(sample, H, h.dimensions_cropped)
-print(h.matrix_glsl)
+h = Homography2("radxa4K")
+h.roll = 0.0
+h.pitch = 0.0
+h.yaw = 5.0
+h.cam_height = height
+h.cam_width = width
+h.camera_z = 500.0  # mm
+print(h)
+# The shader receives the transposed matrix (shader_debug.py:29)
+# Try using the inverse instead - in texture mapping we typically use inverse
+warped_image = simulate_fragment_shader(h.invert.T, sample, clamp_uv=False)
+print(h)
 # Warped image using cv2.warpPerspective
 axes[1].imshow(warped_image)
 axes[1].set_title("Warped Image (Homography Applied)")
 axes[1].axis('on')
 
 # Overlay showing transformation of corner points
-axes[2].imshow(sample, alpha=0.5)
+axes[2].imshow(warped_image, alpha=0.5)
 
-corners_original = h.bounding_box_original
-corners_projected = h.bounding_box_projected
+# Calculate the projected corners using the FORWARD matrix
+# This shows where the original corners end up in the warped image
+corners_projected = []
 
-axes[2].plot(corners_original[:, 0], corners_original[:, 1], 'b-', linewidth=2, label="Original corners")
-axes[2].plot(corners_projected[:, 0], corners_projected[:, 1], 'r-', linewidth=2, label="Projected corners")
+# Use the forward matrix (not inverse) to project corners
+# We want to know: where does corner (x,y) of source appear in output?
+H_forward = h.H.T  # Transpose to match GLSL column-major behavior
+
+for corner in []: #corners_original
+    # Convert corner to normalized coordinates [0, 1]
+    u_norm = corner[0] / (width - 1) if width > 1 else 0.5
+    v_norm = corner[1] / (height - 1) if height > 1 else 0.5
+
+    # Apply forward transformation to see where this source point appears
+    texcoord_homogeneous = np.array([u_norm, v_norm, 1.0])
+    uvw = H_forward @ texcoord_homogeneous
+
+    # Perspective divide
+    w = uvw[2] if abs(uvw[2]) > 1e-8 else 1e-8
+    u_transformed = uvw[0] / w
+    v_transformed = uvw[1] / w
+
+    # Convert back to pixel coordinates
+    x_proj = u_transformed * (width - 1)
+    y_proj = v_transformed * (height - 1)
+
+    corners_projected.append([x_proj, y_proj])
+
+#corners_projected = np.array(corners_projected, dtype=np.float32)
+# Close the loop for drawing
+#corners_projected_closed = np.vstack([corners_projected, corners_projected[0]])
+#corners_original_closed = np.vstack([corners_original, corners_original[0]])
+
+#axes[2].plot(corners_original_closed[:, 0], corners_original_closed[:, 1], 'b-', linewidth=2, label="Original corners")
+#axes[2].plot(corners_projected_closed[:, 0], corners_projected_closed[:, 1], 'r-', linewidth=2, label="Projected corners")
 axes[2].set_title("Corner Transformation Overlay")
 axes[2].legend()
 axes[2].axis('off')

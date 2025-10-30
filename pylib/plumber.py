@@ -1,9 +1,8 @@
-import numpy as np
 import gi
 gi.require_version("Gst", "1.0")
 from gi.repository import Gst # type: ignore
 
-from .homography import Homography, Homography2
+from . import Homography2
 from . import gstreamer as g
 from . import camera_config as cam
 
@@ -36,20 +35,15 @@ def left_eye_pipeline() -> Gst.Pad:
     convert = g.GlColorConvert()
     pl.append(convert)
 
-    # Add perspective correction before rotation (same for both cameras)
     h=Homography2()
-    h.pitch = 15.0
+    h.roll = 15.0
     h.camera_distance=4
     h.image_distance=5
     h.rotation=90.0
-    # We need the INVERSE matrix for the shader.
-    H_inv = np.linalg.inv(h.matrix)
-    perspective_correct = g.GlShaderWarpPerspective(name="perspective_left", matrix=H_inv.T.flatten().tolist())
-    pl.append(perspective_correct)
-
-    # After rotation, dimensions are swapped: 1280x720 → 720x1280
-    rotated_caps = g.Filter("video/x-raw(memory:GLMemory),format=RGBA,width=720,height=1280", name="left_rotated_caps")
-    pl.append(rotated_caps)
+    print(h)
+    H_inv = h.matrix_normalized.T
+    perspective_correct_left = g.GlShaderHomography2(name="perspective_left", matrix=H_inv.T.flatten().tolist())
+    pl.append(perspective_correct_left)
 
     return pl.tail
 
@@ -84,14 +78,13 @@ def right_eye_pipeline() -> Gst.Pad:
     pl.append(convert)
 
     h=Homography2()
-    h.pitch = 15.0
+    h.roll = 15.0
     h.camera_distance=4
     h.image_distance=5
     h.rotation=-90.0
-    # We need the INVERSE matrix for the shader.
-    H_inv = np.linalg.inv(h.matrix)
-    perspective_correct = g.GlShaderWarpPerspective(name="perspective_right", matrix=H_inv.T.flatten().tolist())
-    pl.append(perspective_correct)
+    print(h)
+    perspective_correct_right = g.GlShaderHomography2(name="perspective_right", matrix=h.matrix.T)
+    pl.append(perspective_correct_right)
 
     rotated_caps = g.Filter("video/x-raw(memory:GLMemory),format=RGBA,width=720,height=1280", name="right_rotated_caps")
     pl.append(rotated_caps)

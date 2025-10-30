@@ -7,14 +7,33 @@ gi.require_version("GLib", "2.0")
 gi.require_version("GObject", "2.0")
 gi.require_version("Gst", "1.0")
 
-from gi.repository import Gst, GLib, GObject  # type: ignore
-from . import camera_config
+from gi.repository import Gst, GObject  # type: ignore
 
 logging.basicConfig(level=logging.DEBUG, format="[%(name)s] [%(levelname)8s] - %(message)s")
 logger = logging.getLogger(__name__)
 
 # Initialize GStreamer
 Gst.init(sys.argv[1:])
+
+
+def array_to_uniform(matrix: np.ndarray, name: str = "") -> Gst.Structure:
+    if not name:
+        name = "H"
+
+    # glshader expects a structure with uniforms
+    # Testing: use structure NAME as the uniform name (old approach)
+    structure = Gst.Structure.new_empty(name)
+    if matrix.any():
+        # Create a GObject.ValueArray and populate it with float values
+        # Note: ValueArray is deprecated but still functional for GStreamer interop
+        value_array = GObject.ValueArray(0)  # type: ignore
+        mlist = matrix.flatten().tolist()
+        for val in mlist:
+            gvalue = GObject.Value(GObject.TYPE_FLOAT, float(val))
+            value_array.append(gvalue)  # type: ignore
+        # Set field as "matrix3fv" for mat3 type
+        structure.set_array("matrix3fv", value_array)
+    return structure
 
 class Element():
     """Base wrapper for GStreamer elements. Provides name, src/sink pads, and linking."""
@@ -357,7 +376,7 @@ void main () {{
         self.element.set_property("fragment", fragment_shader)
 
 class GlShaderHomography2(Element):
-    def __init__(self, name: str = "", matrix = []):
+    def __init__(self, name: str = "", matrix: np.ndarray = np.eye(3)):
         super().__init__("glshader", name)
 
         shader_vert = r"""
@@ -372,7 +391,7 @@ void main() {
 }
 """
 
-        shader_frag = r"""
+        shader_frag = """
 #version 300 es
 precision mediump float;
 uniform sampler2D tex;
@@ -396,7 +415,9 @@ void main() {
 
         self.element.set_property("vertex", shader_vert)
         self.element.set_property("fragment", shader_frag)
-        self.element.set_property("uniforms", "H: " + " ".join(str(x) for x in matrix))
+        structure = array_to_uniform(matrix, "H")
+        self.element.set_property("uniforms", structure)
+#        self.element.set_property("uniforms", "H: " + " ".join(str(x) for x in matrix))
 
 class GlShaderWarpPerspective(Element):
     """
@@ -438,84 +459,67 @@ void main() {{
 
         # Create GstStructure for mat3 uniform
         # glshader expects a structure with field "m3fv" containing array of 9 floats
-        if matrix:
-            structure = Gst.Structure.new_empty("H_inv")
-            # Create a GObject.ValueArray and populate it with float values
-            # Note: ValueArray is deprecated but still functional for GStreamer interop
-            value_array = GObject.ValueArray(0)  # type: ignore
-            for val in matrix:
-                gvalue = GObject.Value(GObject.TYPE_FLOAT, float(val))
-                value_array.append(gvalue)  # type: ignore
-            structure.set_array("m3fv", value_array)
-            self.element.set_property("uniforms", structure)
+        structure = array_to_uniform(matrix, "H_inv")
+        self.element.set_property("uniforms", structure)
 
-class GlShaderHomography(Element):
-    """
-    Applies 2D perspective transformation using homography matrix.
-    Corrects keystone distortion from camera tilt angles.
-    Homography transforms perspective view to orthographic projection.
-    Gets camera configuration internally and converts shader to use pixel coordinates.
-    Requires video/x-raw(memory:GLMemory) input.
-    """
-    def __init__(self, name: str = "", matrix: list=[]):
+
+class GlShaderHardCoded(Element):
+
+    def __init__(self, name: str = "", matrix: np.ndarray = np.eye(3)):
         super().__init__("glshader", name)
 
-        # Get camera configuration and compute homography matrix
-        config = camera_config.CameraConfig()
-
-        # Get image dimensions
-        width = config.resolution[0]
-        height = config.resolution[1]
-
-        # Debug: print homography matrix and config
-        logger.info(f"GlShaderHomography: resolution={width}x{height}")
-        logger.info(f"GlShaderHomography: tilt_angle={config.tilt_angle}°")
-        logger.info(f"GlShaderHomography: distance={config.distance_to_object_plane}m")
-        logger.info(f"GlShaderHomography matrix:\n  [{matrix[0]:.6f}, {matrix[1]:.6f}, {matrix[2]:.6f}]\n  [{matrix[3]:.6f}, {matrix[4]:.6f}, {matrix[5]:.6f}]\n  [{matrix[6]:.6f}, {matrix[7]:.6f}, {matrix[8]:.6f}]")
-
-        fragment_shader = f"""
+        fragment_shader = """
 #version 100
 #ifdef GL_ES
-precision highp float;
+precision mediump float;
 #endif
-varying vec2 v_texcoord;
-uniform sampler2D tex;
 
-void main () {{
-    vec2 uv = v_texcoord;
+varying vec2 v_texcoord;      // provided by the pipeline
+uniform sampler2D tex;         // input texture/frame
 
-    // Convert texture coordinates [0,1] to pixel coordinates [0,width]x[0,height]
-    vec2 pixel_coord = uv * vec2({width}.0, {height}.0);
+void main() {
+    // Hardcoded values
+    const bool clamp_uv = true;
+    const vec4 outside_color = vec4(0.5, 0.5, 0.5, 1.0);  // gray
 
-    // Homography matrix (3x3) - perspective transformation in pixel space
-    mat3 H = mat3(
-        // GLSL's mat3 constructor is column-major. We must transpose the row-major matrix.
-        {matrix[0]}, {matrix[3]}, {matrix[6]},  // Column 1
-        {matrix[1]}, {matrix[4]}, {matrix[7]},  // Column 2
-        {matrix[2]}, {matrix[5]}, {matrix[8]}   // Column 3
-    );
+    // Hardcoded identity matrix (column-major)
+    const mat3 M = mat3(1.0, 0.0, 0.0,
+                        0.0, 1.0, 0.0,
+                        0.0, 0.0, 1.0);
 
-    // Apply homography: p' = H * p (homogeneous coordinates in pixel space)
-    vec3 pixel_homogeneous = vec3(pixel_coord.x, pixel_coord.y, 1.0);
-    vec3 transformed = H * pixel_homogeneous;
+    // Apply matrix in homogeneous (u,v,1) space
+    vec3 uvw = M * vec3(v_texcoord, 1.0);
 
-    // Perspective divide to convert back to 2D pixel coordinates
-    vec2 corrected_pixel = transformed.xy / transformed.z;
+    // Safe reciprocal to avoid NaNs if M[2]*[u,v,1] ~= 0
+    float w = (abs(uvw.z) > 1e-8) ? uvw.z : 1e-8;
+    vec2 uv = uvw.xy / w;
 
-    // Convert back to texture coordinates [0,1]
-    vec2 corrected_uv = corrected_pixel / vec2({width}.0, {height}.0);
-
-    // Sample texture with corrected coordinates
-    if (corrected_uv.x >= 0.0 && corrected_uv.x <= 1.0 &&
-        corrected_uv.y >= 0.0 && corrected_uv.y <= 1.0) {{
-        gl_FragColor = texture2D(tex, corrected_uv);
-    }} else {{
-        // Black for out-of-bounds areas
-        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
-    }}
-}}
+    if (clamp_uv) {
+        uv = clamp(uv, 0.0, 1.0);
+        gl_FragColor = texture2D(tex, uv);
+    } else {
+        bool oob = any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)));
+        gl_FragColor = oob ? outside_color : texture2D(tex, uv);
+    }
+}
 """
         self.element.set_property("fragment", fragment_shader)
+
+
+
+class GlShaderAny(Element):
+
+    def __init__(self, name: str = "", matrix: np.ndarray = np.eye(3)):
+        super().__init__("glshader", name)
+
+        with open("./src/shaders/rotate.frag", "r") as f:
+            FRAG = f.read()
+
+        with open("./src/shaders/default.vert", "r") as f:
+            VERT = f.read()
+
+        self.element.set_property("vertex", VERT)
+        self.element.set_property("fragment", FRAG)
 
 class GlDownload(Element):
     """
